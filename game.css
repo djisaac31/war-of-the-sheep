@@ -1,0 +1,425 @@
+:root {
+  color-scheme: dark;
+  --cream: #fff7e8;
+  --hud: #0f1c18;
+  --hud-2: #182b25;
+  --line: rgba(255, 255, 255, 0.16);
+  --gold: #f2bf4d;
+  --mint: #83e79a;
+  --pink: #ff9eb5;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  min-width: 360px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--cream);
+  background: #07120f;
+}
+
+button {
+  font: inherit;
+}
+
+.game-shell {
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #172720, #0c1713);
+  padding: 0 14px;
+}
+
+.brand {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 950;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.resource-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex: 1;
+}
+
+.resource,
+.room-pill,
+.music-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 0 10px;
+  font-size: 0.86rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.music-button {
+  cursor: pointer;
+  color: #fff7e8;
+}
+
+.music-button[aria-pressed="true"] {
+  border-color: rgba(242, 191, 77, 0.7);
+  background: rgba(242, 191, 77, 0.18);
+}
+
+.mission-reopen {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 4;
+  min-height: 36px;
+  cursor: pointer;
+  border: 1px solid rgba(242, 191, 77, 0.5);
+  border-radius: 6px;
+  background: rgba(8, 18, 15, 0.86);
+  color: #fff7e8;
+  padding: 0 12px;
+  font-weight: 900;
+}
+
+.resource b {
+  margin-right: 5px;
+  font-size: 1rem;
+}
+
+.resource--lollipop b {
+  color: var(--pink);
+}
+
+.resource--marshmallow b {
+  color: #fff;
+}
+
+.resource--wool b {
+  color: #ffe184;
+}
+
+.battlefield {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 194px;
+  min-height: 0;
+}
+
+.canvas-wrap {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #315f3c;
+}
+
+#game-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.toast {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  max-width: min(520px, calc(100% - 28px));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  background: rgba(8, 18, 15, 0.84);
+  padding: 9px 11px;
+  color: #fff7e8;
+  font-size: 0.9rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.tutorial-missions {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: min(360px, calc(100% - 28px));
+  border: 1px solid rgba(242, 191, 77, 0.45);
+  border-radius: 8px;
+  background: rgba(8, 18, 15, 0.9);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  padding: 14px;
+  pointer-events: none;
+}
+
+.tutorial-missions__kicker {
+  margin: 0 0 4px;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tutorial-missions h2 {
+  margin: 0 0 6px;
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.tutorial-missions p {
+  margin: 0;
+  color: #d6e6dd;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.tutorial-missions ol {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
+.tutorial-missions li {
+  color: #d6e6dd;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.tutorial-missions li.is-done {
+  color: var(--mint);
+  text-decoration: line-through;
+}
+
+.command-deck {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 330px;
+  gap: 10px;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, #162821, #0c1713);
+  padding: 10px;
+}
+
+.minimap-panel,
+.selection-panel,
+.command-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.minimap-panel {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+
+#minimap {
+  width: 100%;
+  height: 100%;
+  min-height: 150px;
+  display: block;
+  border-radius: 4px;
+  background: #294c34;
+}
+
+.selection-panel {
+  min-width: 0;
+  padding: 14px;
+}
+
+.selection-panel h2 {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: 1.15rem;
+  letter-spacing: 0;
+}
+
+.selection-panel p {
+  max-width: 58rem;
+  margin: 0;
+  color: #c8d7d0;
+  line-height: 1.45;
+}
+
+.command-card {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.command-card button {
+  min-width: 0;
+  min-height: 58px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #2c443b, #172720);
+  color: #fff7e8;
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.command-card button:hover:not(:disabled),
+.command-card button:focus-visible:not(:disabled) {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(242, 191, 77, 0.45);
+  outline: 0;
+}
+
+.command-card button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 247, 232, 0.38);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.art-preload {
+  display: none;
+}
+
+.score-screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 9, 7, 0.72);
+  padding: 20px;
+  z-index: 10;
+}
+
+.score-screen[hidden] {
+  display: none;
+}
+
+.score-card {
+  width: min(720px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fffaf0, #efe8d1);
+  color: #16231e;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  padding: 28px;
+}
+
+.score-kicker {
+  margin: 0 0 6px;
+  color: #5f746a;
+  font-size: 0.8rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.score-card h1 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 8vw, 4.4rem);
+  line-height: 0.95;
+}
+
+.score-card p {
+  margin-top: 0;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 22px 0;
+}
+
+.score-grid div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #d8cfb6;
+  border-radius: 6px;
+  background: #fffdf7;
+  padding: 14px;
+}
+
+.score-grid span {
+  font-size: 1.6rem;
+  font-weight: 950;
+}
+
+.score-grid small {
+  color: #5f746a;
+  font-weight: 850;
+}
+
+.score-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.score-actions a,
+.score-actions button {
+  min-height: 42px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: #172720;
+  color: #fff7e8;
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 900;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  body {
+    overflow: auto;
+  }
+
+  .game-shell {
+    min-height: 100vh;
+    height: auto;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    min-height: 56px;
+    padding: 8px 10px;
+  }
+
+  .resource-bar {
+    order: 3;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .battlefield {
+    grid-template-rows: 58vh auto;
+  }
+
+  .command-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .command-card {
+    grid-template-columns: repeat(4, minmax(68px, 1fr));
+  }
+}

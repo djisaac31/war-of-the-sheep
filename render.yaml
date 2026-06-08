@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: war-of-the-sheep
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production

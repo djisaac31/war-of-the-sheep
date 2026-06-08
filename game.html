@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>War of the Sheep</title>
+    <link rel="stylesheet" href="./game.css">
+  </head>
+  <body>
+    <div class="game-shell">
+      <header class="topbar">
+        <a class="brand" href="./index.html" aria-label="Back to lobby">
+          <span>War of the Sheep</span>
+        </a>
+        <div class="resource-bar" aria-label="Resources">
+          <span class="resource resource--marshmallow"><b id="marshmallows">50</b> Marshmallows</span>
+          <span class="resource resource--lollipop"><b id="lollipops">0</b> Lolligas</span>
+          <span class="resource resource--wool"><b id="wool">3 / 12</b> Wool</span>
+        </div>
+        <button class="music-button" id="music-toggle" type="button" aria-pressed="false">Music Off</button>
+        <button class="music-button" id="mission-toggle" type="button" hidden>Hide Missions</button>
+        <div class="room-pill" id="room-pill">Room -----</div>
+      </header>
+
+      <main class="battlefield" aria-label="RTS battlefield">
+        <section class="canvas-wrap">
+          <canvas id="game-canvas" width="1280" height="760"></canvas>
+          <div class="toast" id="toast">Select sheep, gather Marshmallows, and protect the meadow.</div>
+          <div class="tutorial-missions" id="tutorial-missions" hidden>
+            <p class="tutorial-missions__kicker">Tutorial Mission</p>
+            <h2 id="tutorial-title">Start the Flock</h2>
+            <p id="tutorial-copy">Follow the mission steps to learn the game.</p>
+            <ol id="tutorial-list"></ol>
+          </div>
+        </section>
+
+        <section class="command-deck" aria-label="Command interface">
+          <div class="minimap-panel">
+            <canvas id="minimap" width="260" height="170"></canvas>
+          </div>
+
+          <div class="selection-panel">
+            <h2 id="selection-title">No Selection</h2>
+            <p id="selection-copy">Drag over sheep or click a unit to command the flock.</p>
+          </div>
+
+          <div class="command-card">
+            <button id="train-worker" type="button">Train<br>Worker</button>
+            <button id="train-soldier" type="button">Train<br>Army</button>
+            <button id="train-elite" type="button">Train<br>Elite</button>
+            <button id="build-supply" type="button">Build<br>Supply</button>
+            <button id="build-production" type="button">Build<br>Barracks</button>
+            <button id="build-extractor" type="button">Build<br>Extractor</button>
+            <button id="build-forge" type="button">Build<br>Forge</button>
+            <button id="upgrade-armor" type="button">Upgrade<br>Armor</button>
+            <button id="upgrade-elite-armor" type="button">Elite<br>Armor</button>
+            <button id="cast-ability" type="button">Faction<br>Ability</button>
+          </div>
+
+          <div class="art-preload" aria-hidden="true">
+            <img src="./magic-sheep-units.png" alt="">
+            <img src="./magic-sheep-unit-sprites.png" alt="">
+            <img src="./magic-sheep-buildings.png" alt="">
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="score-screen" id="score-screen" hidden>
+      <div class="score-card">
+        <p class="score-kicker">Match Complete</p>
+        <h1 id="score-title">Victory</h1>
+        <p id="score-summary">The meadow is yours.</p>
+        <div class="score-grid">
+          <div><span id="score-time">0:00</span><small>Match Time</small></div>
+          <div><span id="score-units">0</span><small>Units Created</small></div>
+          <div><span id="score-lost">0</span><small>Units Lost</small></div>
+          <div><span id="score-kills">0</span><small>Enemies Destroyed</small></div>
+          <div><span id="score-buildings">0</span><small>Buildings Made</small></div>
+          <div><span id="score-resources">0</span><small>Marshmallows Gathered</small></div>
+        </div>
+        <div class="score-actions">
+          <a href="./index.html">Back to Lobby</a>
+          <button id="score-rematch" type="button">Play Again</button>
+        </div>
+      </div>
+    </div>
+
+    <audio id="game-music" src="./maestro-magnifico.mp3" preload="auto" loop></audio>
+    <script src="./game.js"></script>
+  </body>
+</html>

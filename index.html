@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Magic Sheep RTS Lobby</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero__art" aria-hidden="true">
+          <div class="pasture">
+            <div class="sun"></div>
+            <div class="cloud cloud--one"></div>
+            <div class="cloud cloud--two"></div>
+            <div class="candy candy--one"></div>
+            <div class="candy candy--two"></div>
+            <div class="sheep sheep--rainbow">
+              <span class="sheep__wool"></span>
+              <span class="sheep__head"></span>
+              <span class="sheep__ear"></span>
+              <span class="sheep__leg sheep__leg--one"></span>
+              <span class="sheep__leg sheep__leg--two"></span>
+            </div>
+            <div class="sheep sheep--mech">
+              <span class="sheep__wool"></span>
+              <span class="sheep__head"></span>
+              <span class="sheep__ear"></span>
+              <span class="sheep__leg sheep__leg--one"></span>
+              <span class="sheep__leg sheep__leg--two"></span>
+            </div>
+            <div class="sheep sheep--fire">
+              <span class="sheep__wool"></span>
+              <span class="sheep__head"></span>
+              <span class="sheep__ear"></span>
+              <span class="sheep__leg sheep__leg--one"></span>
+              <span class="sheep__leg sheep__leg--two"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero__content">
+          <p class="eyebrow">Multiplayer Skirmish Lobby</p>
+          <h1 id="page-title">Magic Sheep RTS</h1>
+          <p class="lede">Host a cozy battlefield, share the room code, and gather the flock before the first Lollipop rush.</p>
+        </div>
+      </section>
+
+      <section class="lobby" aria-label="Game lobby setup">
+        <div class="panel menu-panel">
+          <div class="panel__heading">
+            <p class="eyebrow">Play</p>
+            <h2>Choose Mode</h2>
+          </div>
+
+          <div class="mode-menu" role="tablist" aria-label="Lobby modes">
+            <button class="mode-button is-active" id="mode-host" type="button" data-panel="host-panel" role="tab" aria-selected="true">
+              <span>Host</span>
+              <small>Create a room code.</small>
+            </button>
+            <button class="mode-button" id="mode-join" type="button" data-panel="join-panel" role="tab" aria-selected="false">
+              <span>Join</span>
+              <small>Enter a friend's code.</small>
+            </button>
+            <button class="mode-button" id="mode-train" type="button" data-panel="train-panel" role="tab" aria-selected="false">
+              <span>Train</span>
+              <small>Practice against AI.</small>
+            </button>
+            <button class="mode-button" id="mode-tutorial" type="button" data-panel="tutorial-panel" role="tab" aria-selected="false">
+              <span>Tutorial</span>
+              <small>Learn the RTS basics.</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel panel--flow" id="host-panel" role="tabpanel" aria-labelledby="mode-host">
+          <div class="panel__heading">
+            <p class="eyebrow">Create Room</p>
+            <h2>Host Game</h2>
+          </div>
+
+          <form id="host-form" class="form">
+            <label class="field">
+              <span>Commander Name</span>
+              <input id="host-name" name="hostName" type="text" maxlength="18" placeholder="Derek" autocomplete="nickname">
+            </label>
+
+            <fieldset class="field">
+              <legend>Faction</legend>
+              <div class="faction-grid" role="radiogroup" aria-label="Host faction">
+                <label class="faction-card faction-card--rainbow">
+                  <input type="radio" name="hostFaction" value="Rainbow Sheep" checked>
+                  <span class="faction-card__title">Rainbow</span>
+                  <span class="faction-card__meta">Elite magic</span>
+                </label>
+                <label class="faction-card faction-card--mech">
+                  <input type="radio" name="hostFaction" value="Mech Sheep">
+                  <span class="faction-card__title">Mech</span>
+                  <span class="faction-card__meta">Inventors</span>
+                </label>
+                <label class="faction-card faction-card--fire">
+                  <input type="radio" name="hostFaction" value="Fire Sheep">
+                  <span class="faction-card__title">Fire</span>
+                  <span class="faction-card__meta">Swarm flock</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="settings-grid">
+              <label class="field">
+                <span>Map</span>
+                <select id="map-name" name="mapName">
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Players</span>
+                <select id="player-count" name="playerCount">
+                  <option value="2">2 Players</option>
+                  <option value="3">3 Players</option>
+                  <option value="4">4 Players</option>
+                  <option value="5">5 Players</option>
+                  <option value="6">6 Players</option>
+                </select>
+              </label>
+            </div>
+
+            <button class="button button--primary" type="submit" data-testid="host-game-button">
+              Create Room Code
+            </button>
+          </form>
+        </div>
+
+        <div class="panel panel--flow is-hidden" id="join-panel" role="tabpanel" aria-labelledby="mode-join" hidden>
+          <div class="panel__heading">
+            <p class="eyebrow">Enter Code</p>
+            <h2>Join Game</h2>
+          </div>
+
+          <form id="join-form" class="form">
+            <label class="field">
+              <span>Commander Name</span>
+              <input id="join-name" name="joinName" type="text" maxlength="18" placeholder="Ada" autocomplete="nickname">
+            </label>
+
+            <label class="field">
+              <span>Room Code</span>
+              <input id="room-code-input" name="roomCode" class="room-input" type="text" maxlength="6" placeholder="WOOL7" autocomplete="off" spellcheck="false">
+            </label>
+
+            <fieldset class="field">
+              <legend>Faction</legend>
+              <div class="segmented" role="radiogroup" aria-label="Join faction">
+                <label>
+                  <input type="radio" name="joinFaction" value="Rainbow Sheep" checked>
+                  <span>Rainbow</span>
+                </label>
+                <label>
+                  <input type="radio" name="joinFaction" value="Mech Sheep">
+                  <span>Mech</span>
+                </label>
+                <label>
+                  <input type="radio" name="joinFaction" value="Fire Sheep">
+                  <span>Fire</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <button class="button button--secondary" type="submit" data-testid="join-game-button">
+              Join Room
+            </button>
+          </form>
+        </div>
+
+        <div class="panel panel--flow is-hidden" id="train-panel" role="tabpanel" aria-labelledby="mode-train" hidden>
+          <div class="panel__heading">
+            <p class="eyebrow">Practice</p>
+            <h2>Train vs AI</h2>
+          </div>
+
+          <form id="train-form" class="form">
+            <label class="field">
+              <span>Commander Name</span>
+              <input id="train-name" name="trainName" type="text" maxlength="18" placeholder="Builder Babs" autocomplete="nickname">
+            </label>
+
+            <fieldset class="field">
+              <legend>Faction</legend>
+              <div class="segmented" role="radiogroup" aria-label="Training faction">
+                <label>
+                  <input type="radio" name="trainFaction" value="Rainbow Sheep" checked>
+                  <span>Rainbow</span>
+                </label>
+                <label>
+                  <input type="radio" name="trainFaction" value="Mech Sheep">
+                  <span>Mech</span>
+                </label>
+                <label>
+                  <input type="radio" name="trainFaction" value="Fire Sheep">
+                  <span>Fire</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="settings-grid">
+              <label class="field">
+                <span>AI Difficulty</span>
+                <select id="ai-difficulty" name="aiDifficulty">
+                  <option value="easy">Easy</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Map</span>
+                <select id="training-map" name="trainingMap">
+                </select>
+              </label>
+            </div>
+
+            <button class="button button--start" type="submit" data-testid="train-game-button">
+              Start Training
+            </button>
+          </form>
+        </div>
+
+        <div class="panel panel--flow is-hidden" id="tutorial-panel" role="tabpanel" aria-labelledby="mode-tutorial" hidden>
+          <div class="panel__heading">
+            <p class="eyebrow">New Commander Guide</p>
+            <h2>How to Play</h2>
+          </div>
+
+          <div class="tutorial-guide">
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">1</span>
+              <div>
+                <h3>Play the Lessons</h3>
+                <p>The tutorial starts inside the actual battlefield and gives you missions one at a time while you play.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">2</span>
+              <div>
+                <h3>Learn RTS Controls</h3>
+                <p>You will select sheep, gather Marshmallows, build a Barracks, train units, and use attack-move.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">3</span>
+              <div>
+                <h3>Practice Building</h3>
+                <p>The tutorial gives extra starting resources so you can build and train without waiting too long.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">4</span>
+              <div>
+                <h3>Finish the Mission</h3>
+                <p>Train an army and destroy the enemy main base to complete the tutorial.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step tutorial-step--factions">
+              <span class="tutorial-step__number">★</span>
+              <div>
+                <h3>Pick Your Flock</h3>
+                <p>Rainbow is expensive and magical. Mech is flexible and defensive. Fire expands quickly, and its buildings need Warm Wool.</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="tutorial-actions">
+            <button class="button button--secondary" id="tutorial-train" type="button">Start Tutorial Mission</button>
+            <button class="button button--primary" id="tutorial-host" type="button">Host a Match</button>
+          </div>
+        </div>
+
+        <aside class="room panel" aria-live="polite">
+          <div class="panel__heading">
+            <p class="eyebrow">Current Lobby</p>
+            <h2 id="room-title">No Room Yet</h2>
+          </div>
+
+          <div class="room-code" id="room-code-display">
+            -----
+          </div>
+
+          <div class="room-actions">
+            <button class="icon-button" id="copy-code" type="button" disabled aria-label="Copy room code" title="Copy room code">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 8h10v12H8z"></path>
+                <path d="M6 16H4V4h12v2"></path>
+              </svg>
+            </button>
+            <button class="icon-button" id="copy-link" type="button" disabled aria-label="Copy invite link" title="Copy invite link">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"></path>
+                <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"></path>
+              </svg>
+            </button>
+          </div>
+
+          <dl class="room-meta">
+            <div>
+              <dt>Map</dt>
+              <dd id="room-map">Not selected</dd>
+            </div>
+            <div>
+              <dt>Slots</dt>
+              <dd id="room-slots">0 / 0</dd>
+            </div>
+          </dl>
+
+          <div class="roster" id="roster">
+            <div class="empty-state">Host a game or enter a room code.</div>
+          </div>
+
+          <button class="button button--start" id="start-game" type="button" disabled>
+            Start Skirmish
+          </button>
+
+          <p class="status" id="status">Ready at the meadow gate.</p>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
