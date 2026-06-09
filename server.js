@@ -61,6 +61,8 @@ function publicRoom(room) {
   return {
     code: room.code,
     map: room.map,
+    matchType: room.matchType || "1v1",
+    hostTeam: room.hostTeam || "1",
     maxPlayers: room.maxPlayers,
     training: false,
     difficulty: "human",
@@ -96,6 +98,8 @@ async function handleApi(req, res, url) {
     const room = {
       code,
       map: String(body.map || "Candy Meadow"),
+      matchType: String(body.matchType || "1v1"),
+      hostTeam: String(body.hostTeam || "1"),
       maxPlayers: Math.max(2, Math.min(6, Number(body.maxPlayers || 2))),
       createdAt: new Date().toISOString(),
       started: false,
@@ -140,11 +144,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && action === "start") {
-    const body = await readBody(req);
-    if (room.players[0] && body.playerId !== room.players[0].id) {
-      json(res, 403, { error: "Only the host can start the room" });
-      return;
-    }
+    await readBody(req);
     if (room.players.length < room.maxPlayers) {
       json(res, 409, { error: "Room is not full yet", room: publicRoom(room) });
       return;

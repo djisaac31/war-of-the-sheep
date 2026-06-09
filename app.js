@@ -20,6 +20,8 @@
   const mapName = document.querySelector("#map-name");
   const playerCount = document.querySelector("#player-count");
   const trainingMap = document.querySelector("#training-map");
+  const matchType = document.querySelector("#match-type");
+  const hostTeam = document.querySelector("#host-team");
   const tutorialTrain = document.querySelector("#tutorial-train");
   const tutorialHost = document.querySelector("#tutorial-host");
 
@@ -178,7 +180,7 @@
     const isHost = room && room.training || session && session.playerIndex === 0;
     roomTitle.textContent = room ? (room.training ? "Training Ready" : "Room Open") : "No Room Yet";
     roomCodeDisplay.textContent = room ? room.code : "-----";
-    roomMap.textContent = room ? room.map : "Not selected";
+    roomMap.textContent = room ? room.map + (room.matchType ? " - " + matchLabel(room.matchType) : "") : "Not selected";
     roomSlots.textContent = room ? room.players.length + " / " + room.maxPlayers : "0 / 0";
     roster.innerHTML = "";
 
@@ -195,8 +197,15 @@
 
     copyCode.disabled = !room;
     copyLink.disabled = !room;
-    startGame.disabled = !room || (!room.training && (!isHost || room.players.length < room.maxPlayers));
-    startGame.textContent = room && room.training ? "Start Training" : room && !isHost ? "Waiting for Host" : "Start Skirmish";
+    startGame.disabled = !room || (!room.training && room.players.length < room.maxPlayers);
+    startGame.textContent = room && room.training ? "Start Training" : room && room.players.length < room.maxPlayers ? "Waiting for Players" : "Start Skirmish";
+  }
+
+  function matchLabel(type) {
+    if (type === "ffa") return "FFA";
+    if (type === "2v2-ai") return "2v2 vs AI";
+    if (type === "teams") return "Teams";
+    return "1v1";
   }
 
   function startLobbyPolling(code) {
@@ -211,7 +220,7 @@
         const session = readSession(code);
         if (data.room.started && session) launchRoom(code);
         else if (data.room.players.length < data.room.maxPlayers) status.textContent = "Waiting for players in room " + code + ".";
-        else status.textContent = session && session.playerIndex === 0 ? "Friend joined. Press Start Skirmish." : "Joined room " + code + ". Waiting for host to start.";
+        else status.textContent = "Room full. Press Start Skirmish when everyone is ready.";
       } catch (_error) {
         status.textContent = "Waiting for the room server.";
       }
@@ -298,6 +307,8 @@
           body: JSON.stringify({
             map: chosenMap,
             maxPlayers,
+            matchType: formData.get("matchType") || "1v1",
+            hostTeam: formData.get("hostTeam") || "1",
             player: {
               name: formData.get("hostName") || "Host Shepherd",
               faction: getSelectedValue(hostForm, "hostFaction")
@@ -323,6 +334,8 @@
       code,
       map: chosenMap,
       maxPlayers,
+      matchType: formData.get("matchType") || "1v1",
+      hostTeam: formData.get("hostTeam") || "1",
       training: false,
       difficulty: "human",
       createdAt: new Date().toISOString(),
@@ -346,6 +359,18 @@
     const count = Number(playerCount.value);
     fillMapSelect(mapName, count);
     status.textContent = "Showing " + count + "-player maps.";
+  });
+
+  matchType.addEventListener("change", function () {
+    if (matchType.value === "2v2-ai") {
+      playerCount.value = "4";
+      hostTeam.value = "1";
+      fillMapSelect(mapName, 4);
+      status.textContent = "2v2 vs AI uses a 4-player map.";
+      return;
+    }
+    if (matchType.value === "ffa") hostTeam.value = "ffa";
+    status.textContent = "Match type set to " + matchLabel(matchType.value) + ".";
   });
 
   joinForm.addEventListener("submit", async function (event) {
