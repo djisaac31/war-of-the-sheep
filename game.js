@@ -47,7 +47,7 @@
   const unitSprites = new Image();
   unitSprites.src = "./magic-sheep-unit-sprites.png";
   const buildingsPoster = new Image();
-  buildingsPoster.src = "./magic-sheep-buildings.png";
+  buildingsPoster.src = "./magic-sheep-building-sprites.png";
 
   const world = { w: 2400, h: 1600 };
   const camera = { x: 0, y: 0, w: 1280, h: 760 };
@@ -210,31 +210,31 @@
     missions: [
       {
         title: "Select a Worker",
-        copy: "Click a worker sheep or drag a box around your starting workers.",
+        copy: "Left-click one worker sheep to select it. You can also hold the mouse button and drag a box around several sheep.",
         task: "Select one worker",
         done: () => state.units.some((unit) => unit.owner === "player" && unit.type === "worker" && selected.has(unit.id))
       },
       {
         title: "Gather Marshmallows",
-        copy: "Right-click the white Marshmallow field with a selected worker.",
+        copy: "With a worker selected, right-click the white Marshmallow field. The worker will gather, walk back beside your main base, and drop them off.",
         task: "Gather 20 Marshmallows",
         done: () => state.stats.marshmallowsGathered >= 20 || state.player.marshmallows >= 180
       },
       {
         title: "Build a Barracks",
-        copy: "Select a worker, press Build Barracks, place it near your base, and wait for the timer.",
+        copy: "Select a worker, click Build Barracks at the bottom, then left-click open ground near your base. Wait for the build timer to finish.",
         task: "Finish one Barracks",
         done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "production" && !structure.underConstruction)
       },
       {
         title: "Train Fighters",
-        copy: "Click Train Army at the bottom right. Training has a timer before the unit appears.",
+        copy: "Click your Barracks, then click Train Army at the bottom right. Training has a timer before the unit appears.",
         task: "Create 3 army units",
         done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 3
       },
       {
         title: "Use Attack-Move",
-        copy: "Select fighters, press A, then click toward the enemy base.",
+        copy: "Left-click or drag-select your fighters. Press A, then left-click toward the enemy base so they attack anything on the way.",
         task: "Issue one attack-move",
         done: () => tutorial.attackMoveIssued
       },
@@ -1130,6 +1130,17 @@
     };
   }
 
+  function dropOffPoint(unit, base) {
+    const baseRadius = stats[base.type].radius;
+    const unitRadius = stats[unit.type].radius;
+    const desired = baseRadius + unitRadius + 18;
+    const angle = Math.atan2(unit.y - base.y, unit.x - base.x) || 0;
+    return {
+      x: Math.max(35, Math.min(world.w - 35, base.x + Math.cos(angle) * desired)),
+      y: Math.max(35, Math.min(world.h - 35, base.y + Math.sin(angle) * desired))
+    };
+  }
+
   function pushUnitOutOfBuildings(unit) {
     state.structures.forEach((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return;
@@ -1224,9 +1235,10 @@
       if (!resource || !base) {
         unit.harvest = null;
       } else if (unit.carry >= 10) {
-        unit.tx = base.x;
-        unit.ty = base.y;
-        if (dist(unit, base) < 70) {
+        const drop = dropOffPoint(unit, base);
+        unit.tx = drop.x;
+        unit.ty = drop.y;
+        if (dist(unit, base) < stats.base.radius + stats.worker.radius + 34) {
           if (unit.owner === "player") state.player.marshmallows += unit.carry;
           else state.enemy.marshmallows += unit.carry;
           if (unit.owner === "player") state.stats.marshmallowsGathered += Math.floor(unit.carry);
@@ -1606,14 +1618,16 @@
 
   function drawStructureShape(e, f, s) {
     const crop = buildingCrop(e);
-    const drawW = s.radius * (e.type === "base" ? 2.75 : 2.35);
-    const drawH = s.radius * (e.type === "base" ? 2.25 : 1.95);
+    const isBase = e.type === "base";
+    const drawW = s.radius * (isBase ? 3.45 : 2.35);
+    const drawH = s.radius * (isBase ? 3.0 : 1.95);
+    const drawY = isBase ? -drawH * 0.74 : -drawH * 0.62;
     if (buildingsPoster.complete && buildingsPoster.naturalWidth) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(-drawW / 2, -drawH * 0.62, drawW, drawH);
+      ctx.rect(-drawW / 2, drawY, drawW, drawH);
       ctx.clip();
-      ctx.drawImage(buildingsPoster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, -drawH * 0.62, drawW, drawH);
+      ctx.drawImage(buildingsPoster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, drawY, drawW, drawH);
       ctx.restore();
     }
     ctx.strokeStyle = e.type === "base" ? f.color : f.accent;
@@ -1668,26 +1682,15 @@
   }
 
   function buildingCrop(e) {
-    const f = factionData[e.faction].buildingAtlas;
-    const w = buildingsPoster.naturalWidth || 3072;
-    const h = buildingsPoster.naturalHeight || 1792;
-    const colX = f[0] * w;
-    const colY = f[1] * h;
-    const colW = f[2] * w;
-    const colH = f[3] * h;
-    const positionsByType = {
-      base: { x: 0.04, y: 0.02, w: 0.43, h: 0.21 },
-      supply: { x: 0.55, y: 0.03, w: 0.31, h: 0.19 },
-      production: { x: 0.05, y: 0.30, w: 0.29, h: 0.20 },
-      extractor: { x: 0.36, y: 0.30, w: 0.26, h: 0.18 },
-      forge: { x: 0.35, y: 0.50, w: 0.28, h: 0.20 }
-    };
-    const positions = positionsByType[e.type] || positionsByType.production;
+    const rows = { rainbow: 0, mech: 1, fire: 2 };
+    const cols = { base: 0, supply: 1, production: 2, extractor: 3, forge: 4 };
+    const cellW = (buildingsPoster.naturalWidth || 1800) / 5;
+    const cellH = (buildingsPoster.naturalHeight || 780) / 3;
     return {
-      x: colX + positions.x * colW,
-      y: colY + positions.y * colH,
-      w: positions.w * colW,
-      h: positions.h * colH
+      x: (cols[e.type] ?? 2) * cellW,
+      y: (rows[e.faction] ?? 0) * cellH,
+      w: cellW,
+      h: cellH
     };
   }
 
