@@ -266,6 +266,21 @@ button {
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   padding: 8px;
+  align-content: start;
+}
+
+.command-group {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.command-card [hidden] {
+  display: none;
 }
 
 .command-card button {

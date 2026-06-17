@@ -144,7 +144,11 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && action === "start") {
-    await readBody(req);
+    const body = await readBody(req);
+    if (body.playerId !== room.players[0].id) {
+      json(res, 403, { error: "Only the host can start the game", room: publicRoom(room) });
+      return;
+    }
     if (room.players.length < room.maxPlayers) {
       json(res, 409, { error: "Room is not full yet", room: publicRoom(room) });
       return;

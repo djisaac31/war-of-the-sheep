@@ -33,6 +33,7 @@
     worker: document.querySelector("#train-worker"),
     soldier: document.querySelector("#train-soldier"),
     elite: document.querySelector("#train-elite"),
+    base: document.querySelector("#build-base"),
     supply: document.querySelector("#build-supply"),
     production: document.querySelector("#build-production"),
     extractor: document.querySelector("#build-extractor"),
@@ -41,6 +42,8 @@
     eliteArmor: document.querySelector("#upgrade-elite-armor"),
     ability: document.querySelector("#cast-ability")
   };
+  const commandGroups = Array.from(document.querySelectorAll("[data-command-group]"));
+  const commandButtons = Array.from(document.querySelectorAll("[data-command-button]"));
 
   const poster = new Image();
   poster.src = "./magic-sheep-units.png";
@@ -74,6 +77,11 @@
     lastCommandPoll: 0,
     applyingSnapshot: false,
     tick: 0
+  };
+  const networkRates = {
+    commandPoll: 0.05,
+    hostSnapshot: 0.055,
+    guestSnapshot: 0.045
   };
   const isNetworkHost = network.enabled && network.playerIndex === 0;
   const isNetworkGuest = network.enabled && network.playerIndex > 0;
@@ -148,6 +156,7 @@
     soldier: { l: 0, m: 75 },
     heavy: { l: 35, m: 110 },
     elite: { l: 80, m: 130 },
+    base: { l: 0, m: 300 },
     supply: { l: 0, m: 95 },
     production: { l: 0, m: 145 },
     extractor: { l: 0, m: 60 },
@@ -157,7 +166,7 @@
   };
 
   const trainTimes = { worker: 8, soldier: 11, heavy: 15, elite: 22 };
-  const buildTimes = { supply: 12, production: 18, extractor: 16, forge: 20 };
+  const buildTimes = { base: 30, supply: 12, production: 18, extractor: 16, forge: 20 };
   const aiProfiles = {
     easy: { think: 18, drip: 0.65, burst: 18, gasDelay: 140, gas: 2, caps: [1, 3, 5], waveDelay: 180, waveCooldown: 70, waveSize: 4, heavyDelay: 190, heavyChance: 0.86 },
     normal: { think: 14, drip: 1.1, burst: 28, gasDelay: 100, gas: 4, caps: [2, 4, 7], waveDelay: 150, waveCooldown: 55, waveSize: 5, heavyDelay: 160, heavyChance: 0.78 },
@@ -499,6 +508,7 @@
     addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
     addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
     addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
+    addExpansionResources();
 
     const cameraStart = isNetworkGuest ? enemyStart : playerStart;
     camera.x = Math.max(0, Math.min(world.w - camera.w, cameraStart.x - camera.w / 2));
@@ -516,6 +526,37 @@
 
   function addResourceCluster(x, y) {
     for (let i = 0; i < 8; i += 1) addResource("marshmallow", x + i * 45, y + (i % 2) * 52, 420);
+  }
+
+  function expansionSpots() {
+    const playerStart = { x: activeMap.player[0], y: activeMap.player[1] };
+    const enemyStart = { x: activeMap.enemy[0], y: activeMap.enemy[1] };
+    const fromClearings = (activeMap.clearings || []).map((clearing) => ({ x: clearing[0], y: clearing[1] }));
+    const fallback = [
+      { x: 1200, y: 430 },
+      { x: 1200, y: 1240 },
+      { x: 790, y: 420 },
+      { x: 1580, y: 1180 },
+      { x: 770, y: 1210 },
+      { x: 1630, y: 500 }
+    ];
+    const candidates = [...fromClearings, ...fallback];
+    const spots = [];
+    candidates.forEach((spot) => {
+      const farFromPlayer = Math.hypot(spot.x - playerStart.x, spot.y - playerStart.y) > 620;
+      const farFromEnemy = Math.hypot(spot.x - enemyStart.x, spot.y - enemyStart.y) > 620;
+      const notDuplicate = !spots.some((existing) => Math.hypot(existing.x - spot.x, existing.y - spot.y) < 320);
+      if (farFromPlayer && farFromEnemy && notDuplicate) spots.push(spot);
+    });
+    return spots.slice(0, 4);
+  }
+
+  function addExpansionResources() {
+    expansionSpots().forEach((spot, index) => {
+      const side = index % 2 === 0 ? 1 : -1;
+      addResourceCluster(spot.x + 105 * side, spot.y - 115);
+      addResource("lollipop", spot.x - 110 * side, spot.y + 110, 9999);
+    });
   }
 
   function say(text) {
@@ -609,6 +650,22 @@
     return state.units.some((u) => selected.has(u.id) && u.owner === "player" && u.type === "worker");
   }
 
+  function selectedCommandSubject(picked) {
+    if (!picked.length) return null;
+    const worker = picked.find((entity) => entity.kind === "unit" && entity.type === "worker");
+    if (worker) return worker;
+    return picked[0];
+  }
+
+  function showCommandGroups(groups) {
+    commandGroups.forEach((group) => {
+      group.hidden = !groups.includes(group.dataset.commandGroup);
+    });
+    commandButtons.forEach((button) => {
+      button.hidden = !groups.includes(button.dataset.commandButton);
+    });
+  }
+
   function readyStructure(type, owner = "player") {
     return state.structures.find((s) => s.owner === owner && s.type === type && !s.underConstruction);
   }
@@ -618,6 +675,10 @@
     const producer = readyStructure(producerType, owner);
     if (!producer) {
       if (owner === "player") say(type === "worker" ? "You need a living main base." : "Build a Barracks before training army units.");
+      return;
+    }
+    if (type === "elite" && !readyStructure("forge", owner)) {
+      if (owner === "player") say("Build a Forge to unlock elite units.");
       return;
     }
     if (!spend(type, owner)) return;
@@ -683,6 +744,10 @@
       say("Select a worker first, then choose a building.");
       return;
     }
+    if ((type === "extractor" || type === "forge") && !readyStructure("production")) {
+      say("Build a Barracks to unlock advanced worker buildings.");
+      return;
+    }
     placement = { type, workerId: worker.id, x: worker.x + 90, y: worker.y - 70, resourceId: null };
     say(type === "extractor" ? "Place the Extractor on a lollipop geyser." : "Place the building on open ground. Right click cancels.");
   }
@@ -695,6 +760,10 @@
     beginStructurePlacement("production");
   }
 
+  function buildBase() {
+    beginStructurePlacement("base");
+  }
+
   function buildExtractor() {
     beginStructurePlacement("extractor");
   }
@@ -705,16 +774,36 @@
 
   function canPlace(type, x, y, owner = "player") {
     const s = stats[type];
-    const base = state.structures.find((structure) => structure.owner === owner && structure.type === "base");
-    if (!base || Math.hypot(base.x - x, base.y - y) > (type === "extractor" ? 880 : 680)) return false;
+    if ((type === "extractor" || type === "forge") && !readyStructure("production", owner)) return false;
+    if (!isInBuildZone(type, x, y, owner)) return false;
     if (type === "extractor") return Boolean(lollipopGeyserAt(x, y));
-    if (sideFor(owner).faction === "fire" && !isWarmWool(x, y, owner)) return false;
+    if (sideFor(owner).faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
     if (x < s.radius || y < s.radius || x > world.w - s.radius || y > world.h - s.radius) return false;
-    const blockers = [...state.structures, ...state.resources];
+    if (type === "base" && state.structures.some((structure) => structure.type === "base" && Math.hypot(structure.x - x, structure.y - y) < 280)) return false;
+    const blockers = [
+      ...state.structures,
+      ...state.resources.filter((resource) => !(type === "base" && resource.type === "marshmallow"))
+    ];
     return !blockers.some((blocker) => {
       const radius = blocker.radius || stats[blocker.type].radius;
       return Math.hypot(blocker.x - x, blocker.y - y) < radius + s.radius + 18;
     });
+  }
+
+  function isInBuildZone(type, x, y, owner = "player") {
+    if (type === "base" && isExpansionBaseSpot(x, y)) return true;
+    const structures = state.structures.filter((structure) => {
+      return structure.owner === owner && !structure.underConstruction;
+    });
+    if (!structures.length) return false;
+    return structures.some((structure) => {
+      const radius = structure.type === "base" ? 720 : type === "extractor" ? 520 : 430;
+      return Math.hypot(structure.x - x, structure.y - y) <= radius;
+    });
+  }
+
+  function isExpansionBaseSpot(x, y) {
+    return expansionSpots().some((spot) => Math.hypot(spot.x - x, spot.y - y) <= 190);
   }
 
   function lollipopGeyserAt(x, y) {
@@ -890,6 +979,10 @@
       say("Upgrade already researching.");
       return;
     }
+    if (type === "eliteArmor" && !upgrades.armor.researched) {
+      say("Research Armor before Elite Armor.");
+      return;
+    }
     if (!spend(type)) return;
     upgrade.inProgress = true;
     upgrade.elapsed = 0;
@@ -987,6 +1080,31 @@
 
   function burst(x, y, color) {
     state.effects.push({ x, y, r: 10, life: 0.7, color });
+  }
+
+  function fireBullet(unit, target, color) {
+    const dx = target.x - unit.x;
+    const dy = target.y - unit.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const startDistance = stats[unit.type].radius + 4;
+    const endDistance = stats[target.type].radius * 0.55;
+    state.effects.push({
+      kind: "bullet",
+      x: unit.x + (dx / d) * startDistance,
+      y: unit.y + (dy / d) * startDistance,
+      tx: target.x - (dx / d) * endDistance,
+      ty: target.y - (dy / d) * endDistance,
+      life: 1,
+      color
+    });
+  }
+
+  function updateEffects() {
+    state.effects = state.effects.filter((effect) => {
+      effect.life -= effect.kind === "bullet" ? 0.12 : 1 / 60;
+      if (effect.kind !== "bullet") effect.r += 2.2;
+      return effect.life > 0;
+    });
   }
 
   function selectableAt(wx, wy) {
@@ -1141,6 +1259,12 @@
     };
   }
 
+  function nearestBase(owner, x, y) {
+    return state.structures
+      .filter((structure) => structure.owner === owner && structure.type === "base" && !structure.underConstruction)
+      .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || null;
+  }
+
   function pushUnitOutOfBuildings(unit) {
     state.structures.forEach((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return;
@@ -1169,15 +1293,11 @@
     network.tick += dt;
     if (isNetworkGuest) {
       network.lastSnapshotPoll += dt;
-      if (network.lastSnapshotPoll > 0.12) {
+      if (network.lastSnapshotPoll > networkRates.guestSnapshot) {
         network.lastSnapshotPoll = 0;
         pollNetworkSnapshot();
       }
-      state.effects = state.effects.filter((e) => {
-        e.life -= 1 / 60;
-        e.r += 2.2;
-        return e.life > 0;
-      });
+      updateEffects();
       updateUi();
       return;
     }
@@ -1189,11 +1309,11 @@
     if (isNetworkHost) {
       network.lastCommandPoll += dt;
       network.lastSnapshotPoll += dt;
-      if (network.lastCommandPoll > 0.08) {
+      if (network.lastCommandPoll > networkRates.commandPoll) {
         network.lastCommandPoll = 0;
         pollNetworkCommands();
       }
-      if (network.lastSnapshotPoll > 0.16) {
+      if (network.lastSnapshotPoll > networkRates.hostSnapshot) {
         network.lastSnapshotPoll = 0;
         publishNetworkSnapshot();
       }
@@ -1231,7 +1351,7 @@
     }
     if (unit.harvest) {
       const resource = state.resources.find((r) => r.id === unit.harvest && r.amount > 0);
-      const base = state.structures.find((s) => s.owner === unit.owner && s.type === "base");
+      const base = resource ? nearestBase(unit.owner, resource.x, resource.y) : null;
       if (!resource || !base) {
         unit.harvest = null;
       } else if (unit.carry >= 10) {
@@ -1307,10 +1427,10 @@
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
         target.hp -= damageAfterArmor(s.damage, target);
-        burst(target.x, target.y, factionData[unit.faction].accent);
+        if (s.range > 55) fireBullet(unit, target, factionData[unit.faction].accent);
+        else burst(target.x, target.y, factionData[unit.faction].accent);
         if (target.type === "base" && target.hp <= 0) {
           if (target.owner === "enemy") state.stats.enemiesDestroyed += 1;
-          endMatch(target.owner === "enemy" ? "victory" : "defeat");
         }
       }
     });
@@ -1341,11 +1461,7 @@
       if (s.owner === "enemy") state.stats.enemiesDestroyed += 1;
       return false;
     });
-    state.effects = state.effects.filter((e) => {
-      e.life -= 1 / 60;
-      e.r += 2.2;
-      return e.life > 0;
-    });
+    updateEffects();
 
     const enemyBase = state.structures.find((s) => s.owner === "enemy" && s.type === "base");
     const playerBase = state.structures.find((s) => s.owner === "player" && s.type === "base");
@@ -1712,6 +1828,33 @@
   }
 
   function drawEffect(e) {
+    if (e.kind === "bullet") {
+      const progress = 1 - Math.max(0, Math.min(1, e.life));
+      const x = e.x + (e.tx - e.x) * progress;
+      const y = e.y + (e.ty - e.y) * progress;
+      const angle = Math.atan2(e.ty - e.y, e.tx - e.x);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.15, e.life);
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(angle) * 18, y - Math.sin(angle) * 18);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(angle) * 13, y - Math.sin(angle) * 13);
+      ctx.lineTo(x + Math.cos(angle) * 5, y + Math.sin(angle) * 5);
+      ctx.stroke();
+      ctx.fillStyle = "#fff7be";
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(angle) * 5, y + Math.sin(angle) * 5, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
     if (e.kind === "move") {
       ctx.save();
       ctx.strokeStyle = e.color;
@@ -1872,29 +2015,54 @@
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
     ui.wool.textContent = state.player.woolUsed + " / " + state.player.woolMax;
     const picked = [...state.units, ...state.structures].filter((e) => selected.has(e.id));
-    ui.worker.disabled = false;
-    ui.soldier.disabled = !readyStructure("production");
-    ui.elite.disabled = !readyStructure("production");
-    ui.supply.disabled = !hasSelectedWorker();
-    ui.production.disabled = !hasSelectedWorker();
-    ui.extractor.disabled = !hasSelectedWorker();
-    ui.forge.disabled = !hasSelectedWorker();
-    ui.armor.disabled = !readyStructure("forge") || upgrades.armor.researched || upgrades.armor.inProgress;
-    ui.eliteArmor.disabled = !readyStructure("forge") || upgrades.eliteArmor.researched || upgrades.eliteArmor.inProgress;
-    ui.ability.disabled = false;
+    showCommandGroups([]);
     if (!picked.length) {
       ui.title.textContent = "No Selection";
-      ui.copy.textContent = state.player.faction === "fire" ? "Warm Wool shows where Fire Sheep can build." : "Select a worker, choose a building, then place it on open ground.";
+      ui.copy.textContent = "Select a worker, base, Barracks, or Forge to see its commands.";
       return;
     }
-    const first = picked[0];
+    const first = selectedCommandSubject(picked);
     const f = factionData[first.faction];
     const label = first.kind === "structure"
       ? (first.type === "base" ? f.base : first.type === "production" ? "Barracks" : first.type === "extractor" ? "Lollipop Extractor" : first.type === "forge" ? "Forge" : "Wool Capacity")
       : unitLabel(first.type, first.faction);
+    const hasBarracks = Boolean(readyStructure("production"));
+    const hasForge = Boolean(readyStructure("forge"));
+    if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
+      showCommandGroups(["basic-build", "advanced-build"]);
+      ui.base.disabled = false;
+      ui.supply.disabled = false;
+      ui.production.disabled = false;
+      ui.extractor.disabled = !hasBarracks;
+      ui.forge.disabled = !hasBarracks;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "base") {
+      showCommandGroups(["base"]);
+      ui.worker.disabled = false;
+      ui.ability.disabled = false;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "production") {
+      showCommandGroups(["barracks"]);
+      ui.soldier.disabled = false;
+      ui.elite.disabled = !hasForge;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "forge") {
+      showCommandGroups(["forge"]);
+      ui.armor.disabled = upgrades.armor.researched || upgrades.armor.inProgress;
+      ui.eliteArmor.disabled = !upgrades.armor.researched || upgrades.eliteArmor.researched || upgrades.eliteArmor.inProgress;
+    }
     ui.title.textContent = picked.length === 1 ? label : picked.length + " selected";
     if (first.underConstruction) {
       ui.copy.textContent = "Constructing: " + Math.ceil(Math.max(0, first.buildTime - first.buildProgress)) + " seconds remaining.";
+    } else if (first.kind === "unit" && first.type === "worker") {
+      ui.copy.textContent = hasBarracks
+        ? "Worker commands. Build extra bases at far marshmallow fields to expand."
+        : "Worker commands. Build a Base, Supply, or Barracks. Barracks unlocks Extractor and Forge.";
+    } else if (first.kind === "structure" && first.type === "base") {
+      ui.copy.textContent = "Main base selected. Train workers here.";
+    } else if (first.kind === "structure" && first.type === "production") {
+      ui.copy.textContent = hasForge
+        ? "Barracks selected. Train army units and elite units here."
+        : "Barracks selected. Build a Forge to unlock elite units.";
+    } else if (first.kind === "structure" && first.type === "forge") {
+      ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
@@ -2033,6 +2201,10 @@
   ui.supply.addEventListener("click", () => {
     startMatchMusic();
     buildSupply();
+  });
+  ui.base.addEventListener("click", () => {
+    startMatchMusic();
+    buildBase();
   });
   ui.production.addEventListener("click", () => {
     startMatchMusic();

@@ -99,15 +99,19 @@
   }
 
   function readSession(code) {
+    const key = "war-of-the-sheep-session-" + code;
     try {
-      return JSON.parse(localStorage.getItem("war-of-the-sheep-session-" + code)) || null;
+      return JSON.parse(sessionStorage.getItem(key) || localStorage.getItem(key)) || null;
     } catch (_error) {
       return null;
     }
   }
 
   function saveSession(code, session) {
-    localStorage.setItem("war-of-the-sheep-session-" + code, JSON.stringify(session));
+    const key = "war-of-the-sheep-session-" + code;
+    const value = JSON.stringify(session);
+    sessionStorage.setItem(key, value);
+    localStorage.setItem(key, value);
   }
 
   async function api(path, options) {
@@ -177,7 +181,7 @@
   function renderRoom(room) {
     activeRoom = room;
     const session = room ? readSession(room.code) : null;
-    const isHost = room && room.training || session && session.playerIndex === 0;
+    const isHost = room && (room.training || session && session.playerIndex === 0);
     roomTitle.textContent = room ? (room.training ? "Training Ready" : "Room Open") : "No Room Yet";
     roomCodeDisplay.textContent = room ? room.code : "-----";
     roomMap.textContent = room ? room.map + (room.matchType ? " - " + matchLabel(room.matchType) : "") : "Not selected";
@@ -197,8 +201,12 @@
 
     copyCode.disabled = !room;
     copyLink.disabled = !room;
-    startGame.disabled = !room || (!room.training && room.players.length < room.maxPlayers);
-    startGame.textContent = room && room.training ? "Start Training" : room && room.players.length < room.maxPlayers ? "Waiting for Players" : "Start Skirmish";
+    startGame.disabled = !room || !isHost || (!room.training && room.players.length < room.maxPlayers);
+    startGame.textContent = room && room.training
+      ? "Start Training"
+      : room && !isHost ? "Waiting for Host"
+      : room && room.players.length < room.maxPlayers ? "Waiting for Players"
+      : "Start Skirmish";
   }
 
   function matchLabel(type) {
@@ -220,7 +228,8 @@
         const session = readSession(code);
         if (data.room.started && session) launchRoom(code);
         else if (data.room.players.length < data.room.maxPlayers) status.textContent = "Waiting for players in room " + code + ".";
-        else status.textContent = "Room full. Press Start Skirmish when everyone is ready.";
+        else if ((readSession(code) || {}).playerIndex === 0) status.textContent = "Room full. Host can press Start Skirmish.";
+        else status.textContent = "Room full. Waiting for the host to start.";
       } catch (_error) {
         status.textContent = "Waiting for the room server.";
       }
@@ -229,10 +238,20 @@
 
   async function copyText(text, message) {
     try {
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(text);
       status.textContent = message;
     } catch (_error) {
-      status.textContent = text;
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.setAttribute("readonly", "");
+      helper.style.position = "fixed";
+      helper.style.left = "-9999px";
+      document.body.append(helper);
+      helper.select();
+      const copied = document.execCommand && document.execCommand("copy");
+      helper.remove();
+      status.textContent = copied ? message : "Copy this: " + text;
     }
   }
 

@@ -45,16 +45,22 @@
           </div>
 
           <div class="command-card">
-            <button id="train-worker" type="button">Train<br>Worker</button>
-            <button id="train-soldier" type="button">Train<br>Army</button>
-            <button id="train-elite" type="button">Train<br>Elite</button>
-            <button id="build-supply" type="button">Build<br>Supply</button>
-            <button id="build-production" type="button">Build<br>Barracks</button>
-            <button id="build-extractor" type="button">Build<br>Extractor</button>
-            <button id="build-forge" type="button">Build<br>Forge</button>
-            <button id="upgrade-armor" type="button">Upgrade<br>Armor</button>
-            <button id="upgrade-elite-armor" type="button">Elite<br>Armor</button>
-            <button id="cast-ability" type="button">Faction<br>Ability</button>
+            <span class="command-group" data-command-group="base">Base</span>
+            <button id="train-worker" data-command-button="base" type="button">Train<br>Worker</button>
+            <button id="cast-ability" data-command-button="base" type="button">Faction<br>Ability</button>
+            <span class="command-group" data-command-group="basic-build">Basic Builds</span>
+            <button id="build-supply" data-command-button="basic-build" type="button">Build<br>Supply</button>
+            <button id="build-base" data-command-button="basic-build" type="button">Build<br>Base</button>
+            <button id="build-production" data-command-button="basic-build" type="button">Build<br>Barracks</button>
+            <span class="command-group" data-command-group="advanced-build">Advanced Builds</span>
+            <button id="build-extractor" data-command-button="advanced-build" type="button">Build<br>Extractor</button>
+            <button id="build-forge" data-command-button="advanced-build" type="button">Build<br>Forge</button>
+            <span class="command-group" data-command-group="barracks">Barracks</span>
+            <button id="train-soldier" data-command-button="barracks" type="button">Train<br>Army</button>
+            <button id="train-elite" data-command-button="barracks" type="button">Train<br>Elite</button>
+            <span class="command-group" data-command-group="forge">Forge</span>
+            <button id="upgrade-armor" data-command-button="forge" type="button">Upgrade<br>Armor</button>
+            <button id="upgrade-elite-armor" data-command-button="forge" type="button">Elite<br>Armor</button>
           </div>
 
           <div class="art-preload" aria-hidden="true">
