@@ -297,6 +297,10 @@
   function roomFaction() {
     const index = network.enabled ? network.playerIndex : 0;
     const faction = roomSettings && roomSettings.players && roomSettings.players[index] && roomSettings.players[index].faction;
+    return factionKey(faction);
+  }
+
+  function factionKey(faction) {
     if (/mech/i.test(faction)) return "mech";
     if (/fire/i.test(faction)) return "fire";
     return "rainbow";
@@ -671,30 +675,29 @@
       state.enemy.woolUsed = 0;
       state.enemy.woolMax = 12;
     }
+    state.player.woolUsed = 0;
+    state.player.woolMax = 0;
+    state.enemy.woolUsed = 0;
+    state.enemy.woolMax = 0;
     const playerStart = { x: activeMap.player[0], y: activeMap.player[1] };
     const enemyStart = { x: activeMap.enemy[0], y: activeMap.enemy[1] };
 
-    addStructure("player", pf, "base", playerStart.x, playerStart.y);
-    addStructure("player", pf, "supply", playerStart.x - 100, playerStart.y - 140);
-    addUnit("player", pf, "worker", playerStart.x + 110, playerStart.y - 30);
-    addUnit("player", pf, "worker", playerStart.x + 60, playerStart.y + 80);
-    addUnit("player", pf, "worker", playerStart.x + 170, playerStart.y + 70);
-
-    addStructure("enemy", ef, "base", enemyStart.x, enemyStart.y);
-    addStructure("enemy", ef, "supply", enemyStart.x + 100, enemyStart.y - 140);
-    if (!network.enabled || tutorialMode) addStructure("enemy", ef, "production", enemyStart.x - 65, enemyStart.y - 125);
-    addUnit("enemy", ef, "worker", enemyStart.x - 110, enemyStart.y - 10);
-    addUnit("enemy", ef, "worker", enemyStart.x - 65, enemyStart.y + 70);
-    if (network.enabled || tutorialMode) addUnit("enemy", ef, "worker", enemyStart.x - 150, enemyStart.y + 90);
-    else addUnit("enemy", ef, "soldier", enemyStart.x - 150, enemyStart.y + 90);
-
-    addResourceCluster(activeMap.playerGas[0] - 180, activeMap.playerGas[1] - 120);
-    addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
-    addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
-    addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
+    if (network.enabled && (roomSettings.players || []).length > 2) {
+      spawnRoomSlots();
+    } else {
+      spawnStartingFlock("player", pf, playerStart.x, playerStart.y, false, false);
+      spawnStartingFlock("enemy", ef, enemyStart.x, enemyStart.y, true, !network.enabled || tutorialMode);
+      addResourceCluster(activeMap.playerGas[0] - 180, activeMap.playerGas[1] - 120);
+      addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
+      addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
+      addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
+    }
     addExpansionResources();
 
-    const cameraStart = shouldSwapPerspective() ? enemyStart : playerStart;
+    const starts = startPositionsForPlayers((roomSettings.players || []).length || 2);
+    const cameraStart = network.enabled && starts[network.playerIndex]
+      ? starts[network.playerIndex]
+      : shouldSwapPerspective() ? enemyStart : playerStart;
     camera.x = Math.max(0, Math.min(world.w - camera.w, cameraStart.x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, cameraStart.y - camera.h / 2));
     state.setupComplete = true;
@@ -706,6 +709,54 @@
     } else {
       say("You are commanding " + factionData[pf].name + " on " + (roomSettings.map || "Candy Meadow") + ". Gather Marshmallows, then build a Lollipop Extractor.");
     }
+  }
+
+  function spawnRoomSlots() {
+    const players = roomSettings.players || [];
+    const starts = startPositionsForPlayers(players.length);
+    const localIndex = localPlayerIndex();
+    players.forEach((player, index) => {
+      const start = starts[index] || starts[starts.length - 1] || { x: activeMap.enemy[0], y: activeMap.enemy[1] };
+      const owner = roomPlayersAllied(localIndex, index) ? "player" : "enemy";
+      const faction = factionKey(player.faction);
+      const mirror = owner === "enemy";
+      spawnStartingFlock(owner, faction, start.x, start.y, mirror, Boolean(player.ai));
+      addResourceCluster(start.x + (mirror ? -260 : 100), start.y + 120);
+      addResource("lollipop", start.x + (mirror ? -185 : 185), start.y - 130, 9999);
+    });
+  }
+
+  function startPositionsForPlayers(count) {
+    if (count <= 2) {
+      return [
+        { x: activeMap.player[0], y: activeMap.player[1] },
+        { x: activeMap.enemy[0], y: activeMap.enemy[1] }
+      ];
+    }
+    const clearings = (activeMap.clearings || []).map((clearing) => ({ x: clearing[0], y: clearing[1] }));
+    if (clearings.length >= count) return clearings.slice(0, count);
+    const fallback = [
+      { x: 330, y: 500 },
+      { x: 330, y: 1220 },
+      { x: 1200, y: 430 },
+      { x: 2070, y: 500 },
+      { x: 2070, y: 1220 },
+      { x: 1200, y: 1300 }
+    ];
+    return fallback.slice(0, count);
+  }
+
+  function spawnStartingFlock(owner, faction, x, y, mirror, withProduction) {
+    const side = sideFor(owner);
+    side.woolMax += 12;
+    const direction = mirror ? -1 : 1;
+    addStructure(owner, faction, "base", x, y);
+    addStructure(owner, faction, "supply", x - direction * 100, y - 140);
+    if (withProduction) addStructure(owner, faction, "production", x - direction * 80, y - 125);
+    addUnit(owner, faction, "worker", x + direction * 110, y - 30);
+    addUnit(owner, faction, "worker", x + direction * 60, y + 80);
+    addUnit(owner, faction, "worker", x + direction * 170, y + 70);
+    side.woolUsed += 3;
   }
 
   function addResourceCluster(x, y) {
@@ -812,6 +863,11 @@
 
   function sideFor(owner) {
     return owner === "enemy" ? state.enemy : state.player;
+  }
+
+  function hasComputerEnemy() {
+    if (!network.enabled) return !tutorialMode;
+    return (roomSettings.players || []).some((player, index) => player.ai && !roomPlayersAllied(localPlayerIndex(), index));
   }
 
   function spend(type, owner = "player") {
@@ -1659,12 +1715,12 @@
       }
     }
 
-    if (!network.enabled && !tutorialMode && aiTimer > aiProfile.think) {
+    if ((!network.enabled || isNetworkHost && hasComputerEnemy()) && !tutorialMode && aiTimer > aiProfile.think) {
       aiTimer = 0;
       enemyThink();
     }
 
-    if (!network.enabled && !tutorialMode) state.enemy.marshmallows += dt * aiProfile.drip;
+    if ((!network.enabled || isNetworkHost && hasComputerEnemy()) && !tutorialMode) state.enemy.marshmallows += dt * aiProfile.drip;
 
     updateTraining(dt);
     state.units.forEach((unit) => updateUnit(unit, dt));
