@@ -100,6 +100,19 @@ function slotTeam(type, index) {
   return index === 0 ? "allies" : "rivals";
 }
 
+function cleanTeam(value, type, index) {
+  const team = String(value || "");
+  if (type === "ffa") return team.startsWith("ffa-") ? team : slotTeam(type, index);
+  if (team === "allies" || team === "rivals") return team;
+  return slotTeam(type, index);
+}
+
+function cleanFaction(value) {
+  const faction = String(value || "");
+  if (faction === "Mech Sheep" || faction === "Fire Sheep" || faction === "Rainbow Sheep") return faction;
+  return "Rainbow Sheep";
+}
+
 function playerIndex(room, playerId) {
   return room.players.findIndex((player) => player.id === playerId);
 }
@@ -221,7 +234,27 @@ async function handleApi(req, res, url) {
       json(res, 404, { error: "Slot not found", room: publicRoom(room) });
       return;
     }
-    room.players[index].team = String(body.team || "1");
+    room.players[index].team = cleanTeam(body.team, room.matchType || "1v1", index);
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "faction") {
+    const body = await readBody(req);
+    const index = Number(body.index);
+    const actorIndex = playerIndex(room, body.playerId);
+    if (!room.players[index] || actorIndex < 0) {
+      json(res, 404, { error: "Slot not found", room: publicRoom(room) });
+      return;
+    }
+    const actorIsHost = actorIndex === 0;
+    const targetIsSelf = actorIndex === index;
+    const targetIsAi = Boolean(room.players[index].ai);
+    if (!targetIsSelf && !(actorIsHost && targetIsAi)) {
+      json(res, 403, { error: "You can only change your own faction. The host can change AI factions.", room: publicRoom(room) });
+      return;
+    }
+    room.players[index].faction = cleanFaction(body.faction);
     json(res, 200, { room: publicRoom(room) });
     return;
   }

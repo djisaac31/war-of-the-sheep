@@ -694,8 +694,35 @@ button:focus-visible {
 
 .player-row__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+.player-row--team-gap {
+  margin-top: 12px;
+  border-top-width: 3px;
+  border-top-color: rgba(242, 191, 77, 0.72);
+}
+
+.slot-control {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.slot-control select {
+  min-height: 30px;
+  max-width: 128px;
+  border: 1px solid rgba(42, 78, 65, 0.22);
+  border-radius: 6px;
+  background: #f8f5e8;
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .ai-badge {

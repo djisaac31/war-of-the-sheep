@@ -471,7 +471,7 @@
       (data.commands || []).forEach((entry) => {
         network.lastCommandId = Math.max(network.lastCommandId, entry.id || 0);
         if (entry.playerIndex === network.playerIndex) return;
-        applyRemoteCommand(entry.command || {});
+        applyRemoteCommand(entry.command || {}, entry.playerIndex);
       });
     } catch (_error) {
       say("Waiting for multiplayer room server.");
@@ -520,7 +520,7 @@
   function applySnapshot(snapshot) {
     network.applyingSnapshot = true;
     const data = JSON.parse(JSON.stringify(snapshot));
-    if (network.playerIndex > 0) swapSnapshotPerspective(data);
+    if (shouldSwapPerspective()) swapSnapshotPerspective(data);
     Object.keys(state).forEach((key) => {
       state[key] = data.state[key];
     });
@@ -551,6 +551,10 @@
       if (entity.owner === "player") entity.owner = "enemy";
       else if (entity.owner === "enemy") entity.owner = "player";
     });
+  }
+
+  function shouldSwapPerspective() {
+    return network.enabled && !roomPlayersAllied(0, network.playerIndex);
   }
 
   function addUnit(owner, faction, type, x, y) {
@@ -645,7 +649,7 @@
 
     addStructure("enemy", ef, "base", enemyStart.x, enemyStart.y);
     addStructure("enemy", ef, "supply", enemyStart.x + 100, enemyStart.y - 140);
-    addStructure("enemy", ef, "production", enemyStart.x - 65, enemyStart.y - 125);
+    if (!network.enabled || tutorialMode) addStructure("enemy", ef, "production", enemyStart.x - 65, enemyStart.y - 125);
     addUnit("enemy", ef, "worker", enemyStart.x - 110, enemyStart.y - 10);
     addUnit("enemy", ef, "worker", enemyStart.x - 65, enemyStart.y + 70);
     if (network.enabled || tutorialMode) addUnit("enemy", ef, "worker", enemyStart.x - 150, enemyStart.y + 90);
@@ -657,7 +661,7 @@
     addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
     addExpansionResources();
 
-    const cameraStart = isNetworkGuest ? enemyStart : playerStart;
+    const cameraStart = shouldSwapPerspective() ? enemyStart : playerStart;
     camera.x = Math.max(0, Math.min(world.w - camera.w, cameraStart.x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, cameraStart.y - camera.h / 2));
     state.setupComplete = true;
@@ -990,7 +994,7 @@
         resourceId: geyser ? geyser.id : null
       });
       placement = null;
-      say("Build order sent to the host.");
+      say("Worker moving to build site.");
       return true;
     }
     if (!spend(placement.type)) return true;
@@ -1202,8 +1206,8 @@
     }
   }
 
-  function applyRemoteCommand(command) {
-    const owner = "enemy";
+  function applyRemoteCommand(command, playerIndex = 1) {
+    const owner = roomPlayersAllied(0, playerIndex) ? "player" : "enemy";
     if (command.action === "command") {
       applyUnitCommand(owner, command.unitIds || [], Number(command.x), Number(command.y));
     } else if (command.action === "attackMove") {
@@ -1282,7 +1286,7 @@
     if (isNetworkGuest) {
       sendNetworkCommand({ action: "command", unitIds: units.map((u) => u.id), x: wx, y: wy });
       state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
-      say("Command sent.");
+      say("Move order issued.");
       return;
     }
     applyUnitCommand("player", units.map((u) => u.id), wx, wy);
@@ -1336,7 +1340,7 @@
       sendNetworkCommand({ action: "attackMove", unitIds: units.map((u) => u.id), x: wx, y: wy });
       state.effects.push({ x: wx, y: wy, r: 8, life: 1.1, color: "#ffef7a", kind: "attack" });
       commandMode = null;
-      say("Attack move sent.");
+      say("Attack move issued.");
       return;
     }
     applyAttackMove("player", units.map((u) => u.id), wx, wy);

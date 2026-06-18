@@ -172,6 +172,54 @@
     return team === "allies" ? "Allied Flock" : "Rival Flock";
   }
 
+  function teamOptions(room) {
+    if (!room || room.matchType === "ffa") return [["", "FFA"]];
+    return [["allies", "Allied Flock"], ["rivals", "Rival Flock"]];
+  }
+
+  function makeSlotSelect(label, value, options, disabled, onChange) {
+    const wrap = document.createElement("label");
+    const text = document.createElement("span");
+    const select = document.createElement("select");
+    wrap.className = "slot-control";
+    text.textContent = label;
+    options.forEach(function (item) {
+      const option = document.createElement("option");
+      option.value = item[0];
+      option.textContent = item[1];
+      select.append(option);
+    });
+    select.value = value;
+    select.disabled = disabled;
+    select.addEventListener("change", function () {
+      onChange(select.value);
+    });
+    wrap.append(text, select);
+    return wrap;
+  }
+
+  async function updateRoomSlot(action, body, localUpdate) {
+    if (!activeRoom) return;
+    const session = readSession(activeRoom.code);
+    if (!serverOnline) {
+      localUpdate();
+      saveRoom(activeRoom);
+      renderRoom(activeRoom);
+      return;
+    }
+    try {
+      const data = await api("/api/rooms/" + encodeURIComponent(activeRoom.code) + "/" + action, {
+        method: "POST",
+        body: JSON.stringify(Object.assign({ playerId: session && session.playerId }, body))
+      });
+      saveRoom(data.room);
+      renderRoom(data.room);
+      status.textContent = "Lobby updated.";
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  }
+
   function hasAlliance(room, a, b) {
     return (room.alliances || []).some(function (pair) {
       return pair.includes(a) && pair.includes(b);
@@ -250,9 +298,12 @@
     return controls;
   }
 
-  function playerRow(room, player, index, isHost, localIndex) {
+  function playerRow(room, player, index, isHost, localIndex, previousTeam) {
     const row = document.createElement("div");
     row.className = "player-row";
+    const team = player.team || slotTeam(room.matchType, index);
+    row.dataset.team = team;
+    if (index > 0 && previousTeam && previousTeam !== team && room.matchType !== "ffa") row.classList.add("player-row--team-gap");
 
     const identity = document.createElement("div");
     const actions = document.createElement("div");
@@ -271,6 +322,29 @@
 
     identity.append(name, faction);
     actions.append(badge);
+    actions.append(makeSlotSelect(
+      "Team",
+      room.matchType === "ffa" ? "" : (player.team || slotTeam(room.matchType, index)),
+      teamOptions(room),
+      !isHost || room.started || room.matchType === "ffa",
+      function (team) {
+        updateRoomSlot("team", { index, team }, function () {
+          activeRoom.players[index].team = team;
+        });
+      }
+    ));
+    const canChangeFaction = (!player.ai && localIndex === index) || (isHost && player.ai);
+    actions.append(makeSlotSelect(
+      "Race",
+      player.faction,
+      [["Rainbow Sheep", "Rainbow"], ["Mech Sheep", "Mech"], ["Fire Sheep", "Fire"]],
+      room.started || !canChangeFaction,
+      function (faction) {
+        updateRoomSlot("faction", { index, faction }, function () {
+          activeRoom.players[index].faction = faction;
+        });
+      }
+    ));
     allianceControls(room, index, localIndex).forEach(function (button) {
       actions.append(button);
     });
@@ -296,7 +370,8 @@
       roster.append(empty);
     } else {
       room.players.forEach(function (player, index) {
-        roster.append(playerRow(room, player, index, isHost, session ? session.playerIndex : 0));
+        const previous = index > 0 ? room.players[index - 1].team || slotTeam(room.matchType, index - 1) : "";
+        roster.append(playerRow(room, player, index, isHost, session ? session.playerIndex : 0, previous));
       });
     }
 
