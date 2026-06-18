@@ -172,12 +172,12 @@
     })) return "FFA Alliance";
     const team = player.team || slotTeam(room.matchType, index);
     if (room.matchType === "ffa" || String(team).startsWith("ffa")) return "FFA";
-    return team === "allies" ? "Allied Flock" : "Rival Flock";
+    return team === "allies" ? "Team 1" : "Team 2";
   }
 
   function teamOptions(room) {
     if (!room || room.matchType === "ffa") return [["", "FFA"]];
-    return [["allies", "Allied Flock"], ["rivals", "Rival Flock"]];
+    return [["allies", "Team 1"], ["rivals", "Team 2"]];
   }
 
   function makeSlotSelect(label, value, options, disabled, onChange) {
@@ -231,10 +231,8 @@
     }
   }
 
-  function everyoneReady(room) {
-    return room && room.players.length >= room.maxPlayers && room.players.every(function (player) {
-      return Boolean(player.ready);
-    });
+  function roomFull(room) {
+    return room && room.players.length >= room.maxPlayers;
   }
 
   function hasAlliance(room, a, b) {
@@ -334,7 +332,7 @@
 
     name.textContent = player.name || "Commander " + (index + 1);
     faction.textContent = player.faction + " - " + playerTeamLabel(room, player, index);
-    badge.textContent = player.host ? (player.ready ? "Host Ready" : "Host") : player.ai ? "AI" : player.ready ? "Ready" : "Not Ready";
+    badge.textContent = player.host ? "Host" : player.ai ? "AI" : "Player";
     if (player.ai) badge.className = "ai-badge";
 
     identity.append(name, faction);
@@ -350,19 +348,6 @@
         });
       }
     ));
-    if (!player.ai && !room.started && localIndex === index) {
-      const readyButton = document.createElement("button");
-      readyButton.className = "button button--tiny";
-      readyButton.type = "button";
-      readyButton.textContent = player.ready ? "You are Ready" : "Ready Up";
-      readyButton.title = player.ready ? "Click if you are not ready anymore." : "Click when you are ready.";
-      readyButton.addEventListener("click", function () {
-        updateRoomSlot("ready", { ready: !player.ready }, function () {
-          activeRoom.players[index].ready = !activeRoom.players[index].ready;
-        });
-      });
-      actions.append(readyButton);
-    }
     const canChangeFaction = (!player.ai && localIndex === index) || (isHost && player.ai);
     actions.append(makeSlotSelect(
       "Race",
@@ -408,12 +393,17 @@
     copyCode.disabled = !room;
     copyLink.disabled = !room;
     addAi.disabled = !room || !isHost || room.training || room.players.length >= room.maxPlayers;
-    startGame.disabled = !room || !isHost || (!room.training && !everyoneReady(room));
+    addAi.title = !room
+      ? "Create a room first."
+      : !isHost ? "Only the host who created this room can add AI."
+      : room.training ? "Training rooms already have an AI."
+      : room.players.length >= room.maxPlayers ? "The room is full."
+      : "Add an AI player to the next open slot.";
+    startGame.disabled = !room || !isHost || (!room.training && !roomFull(room));
     startGame.textContent = room && room.training
       ? "Start Training"
       : room && !isHost ? "Waiting for Host"
       : room && room.players.length < room.maxPlayers ? "Waiting for Players"
-      : room && !everyoneReady(room) ? "Waiting for Ready"
       : "Start Skirmish";
   }
 
@@ -423,6 +413,11 @@
     if (type === "2v2") return "2v2";
     if (type === "3v3") return "3v3";
     return "1v1";
+  }
+
+  function roomLoadErrorMessage(error) {
+    if (error && /Room not found/i.test(error.message)) return "Room not found on this server. Create a new room code.";
+    return error && error.message ? error.message : "Waiting for the room server.";
   }
 
   function startLobbyPolling(code) {
@@ -437,11 +432,10 @@
         const session = readSession(code);
         if (data.room.started && session) launchRoom(code);
         else if (data.room.players.length < data.room.maxPlayers) status.textContent = "Waiting for players in room " + code + ".";
-        else if (!everyoneReady(data.room)) status.textContent = "Room full. Waiting for everyone to press Ready.";
-        else if ((readSession(code) || {}).playerIndex === 0) status.textContent = "Everyone is ready. Host can press Start Skirmish.";
+        else if ((readSession(code) || {}).playerIndex === 0) status.textContent = "Room full. Host can press Start Skirmish.";
         else status.textContent = "Room full. Waiting for the host to start.";
-      } catch (_error) {
-        status.textContent = "Waiting for the room server.";
+      } catch (error) {
+        status.textContent = roomLoadErrorMessage(error);
       }
     }, 1200);
   }
@@ -801,7 +795,7 @@
     launchRoom(activeRoom.code);
   });
 
-  function loadRoomFromUrl() {
+  async function loadRoomFromUrl() {
     const code = new URLSearchParams(window.location.search).get("room");
     if (!code) {
       renderRoom(null);
@@ -810,8 +804,31 @@
     }
 
     const cleanCode = code.toUpperCase();
-    const room = readRooms()[cleanCode];
     roomCodeInput.value = cleanCode;
+    if (serverOnline) {
+      try {
+        const data = await api("/api/rooms/" + encodeURIComponent(cleanCode));
+        saveRoom(data.room);
+        renderRoom(data.room);
+        status.textContent = "Room " + cleanCode + " found on the multiplayer server.";
+        startLobbyPolling(cleanCode);
+        showPanel("join-panel");
+        return;
+      } catch (error) {
+        renderRoom({
+          code: cleanCode,
+          map: "Waiting for server",
+          maxPlayers: 2,
+          matchType: "1v1",
+          players: []
+        });
+        status.textContent = roomLoadErrorMessage(error);
+        showPanel("join-panel");
+        return;
+      }
+    }
+
+    const room = readRooms()[cleanCode];
     renderRoom(room || {
       code: cleanCode,
       map: "Waiting for host",

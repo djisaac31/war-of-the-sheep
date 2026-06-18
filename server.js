@@ -409,10 +409,6 @@ async function handleApi(req, res, url) {
       json(res, 409, { error: "Room is not full yet", room: publicRoom(room) });
       return;
     }
-    if (room.players.some((player) => !player.ready)) {
-      json(res, 409, { error: "Not everyone is ready yet", room: publicRoom(room) });
-      return;
-    }
     room.started = true;
     json(res, 200, { room: publicRoom(room) });
     return;
