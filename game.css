@@ -209,6 +209,79 @@ button {
   text-decoration: line-through;
 }
 
+.alliance-panel {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 5;
+  width: min(360px, calc(100% - 36px));
+  border: 1px solid rgba(242, 191, 77, 0.45);
+  border-radius: 8px;
+  background: rgba(10, 22, 18, 0.94);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.36);
+  padding: 14px;
+}
+
+.alliance-panel__head,
+.alliance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.alliance-panel p {
+  margin: 0;
+  color: var(--gold);
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.alliance-panel h2 {
+  margin: 2px 0 0;
+  color: #fff;
+  font-size: 1.08rem;
+}
+
+.alliance-panel button {
+  min-height: 32px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cream);
+  padding: 0 10px;
+  font-weight: 900;
+}
+
+.alliance-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.alliance-row {
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 10px;
+}
+
+.alliance-row small {
+  display: block;
+  color: rgba(255, 247, 232, 0.68);
+  font-weight: 800;
+}
+
+.alliance-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .command-deck {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr) 330px;

@@ -62,15 +62,21 @@ function publicRoom(room) {
     code: room.code,
     map: room.map,
     matchType: room.matchType || "1v1",
-    hostTeam: room.hostTeam || "1",
     maxPlayers: room.maxPlayers,
     training: false,
     difficulty: "human",
     createdAt: room.createdAt,
     started: room.started,
+    alliances: (room.alliances || []).map((pair) => pair.slice()),
+    allianceRequests: (room.allianceRequests || []).map((request) => ({
+      fromIndex: playerIndex(room, request.fromId),
+      toIndex: playerIndex(room, request.toId)
+    })).filter((request) => request.fromIndex >= 0 && request.toIndex >= 0),
     players: room.players.map((player, index) => ({
       name: player.name,
       faction: player.faction,
+      team: player.team || slotTeam(room.matchType || "1v1", index),
+      ai: Boolean(player.ai),
       host: index === 0,
       ready: true
     }))
@@ -81,8 +87,51 @@ function createPlayer(input, fallbackName) {
   return {
     id: crypto.randomUUID(),
     name: String(input.name || fallbackName).slice(0, 18),
-    faction: String(input.faction || "Rainbow Sheep")
+    faction: String(input.faction || "Rainbow Sheep"),
+    team: String(input.team || "allies"),
+    ai: Boolean(input.ai)
   };
+}
+
+function slotTeam(type, index) {
+  if (type === "ffa") return "ffa-" + index;
+  if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
+  if (type === "3v3") return index < 3 ? "allies" : "rivals";
+  return index === 0 ? "allies" : "rivals";
+}
+
+function playerIndex(room, playerId) {
+  return room.players.findIndex((player) => player.id === playerId);
+}
+
+function allianceKey(a, b) {
+  return [Math.min(a, b), Math.max(a, b)];
+}
+
+function hasAlliance(room, a, b) {
+  const key = allianceKey(a, b);
+  return (room.alliances || []).some((pair) => pair[0] === key[0] && pair[1] === key[1]);
+}
+
+function removeAlliance(room, a, b) {
+  const key = allianceKey(a, b);
+  room.alliances = (room.alliances || []).filter((pair) => pair[0] !== key[0] || pair[1] !== key[1]);
+}
+
+function removeAllianceRequests(room, aId, bId) {
+  room.allianceRequests = (room.allianceRequests || []).filter((request) => {
+    const sameDirection = request.fromId === aId && request.toId === bId;
+    const reverseDirection = request.fromId === bId && request.toId === aId;
+    return !sameDirection && !reverseDirection;
+  });
+}
+
+function requireHost(body, room, res) {
+  if (body.playerId !== room.players[0].id) {
+    json(res, 403, { error: "Only the host can change the lobby", room: publicRoom(room) });
+    return false;
+  }
+  return true;
 }
 
 async function handleApi(req, res, url) {
@@ -95,15 +144,17 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const code = makeRoomCode();
     const host = createPlayer(body.player || {}, "Host Shepherd");
+    host.team = slotTeam(String(body.matchType || "1v1"), 0);
     const room = {
       code,
       map: String(body.map || "Candy Meadow"),
       matchType: String(body.matchType || "1v1"),
-      hostTeam: String(body.hostTeam || "1"),
       maxPlayers: Math.max(2, Math.min(6, Number(body.maxPlayers || 2))),
       createdAt: new Date().toISOString(),
       started: false,
       players: [host],
+      alliances: [],
+      allianceRequests: [],
       commands: [],
       snapshot: null
     };
@@ -138,8 +189,113 @@ async function handleApi(req, res, url) {
       return;
     }
     const player = createPlayer(body.player || {}, "Guest Shepherd");
+    player.team = slotTeam(room.matchType || "1v1", room.players.length);
     room.players.push(player);
     json(res, 200, { room: publicRoom(room), playerId: player.id, playerIndex: room.players.length - 1 });
+    return;
+  }
+
+  if (req.method === "POST" && action === "ai") {
+    const body = await readBody(req);
+    if (!requireHost(body, room, res)) return;
+    if (room.players.length >= room.maxPlayers) {
+      json(res, 409, { error: "Room is full", room: publicRoom(room) });
+      return;
+    }
+    const factionCycle = ["Mech Sheep", "Fire Sheep", "Rainbow Sheep"];
+    room.players.push(createPlayer({
+      name: "AI Shepherd " + room.players.length,
+      faction: factionCycle[room.players.length % factionCycle.length],
+      team: String(body.team || slotTeam(room.matchType || "1v1", room.players.length)),
+      ai: true
+    }, "AI Shepherd"));
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "team") {
+    const body = await readBody(req);
+    if (!requireHost(body, room, res)) return;
+    const index = Number(body.index);
+    if (!room.players[index]) {
+      json(res, 404, { error: "Slot not found", room: publicRoom(room) });
+      return;
+    }
+    room.players[index].team = String(body.team || "1");
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "alliance") {
+    const body = await readBody(req);
+    if (room.matchType !== "ffa") {
+      json(res, 409, { error: "Alliances are only for FFA rooms", room: publicRoom(room) });
+      return;
+    }
+    const fromIndex = playerIndex(room, body.playerId);
+    const targetIndex = Number(body.targetIndex);
+    if (fromIndex < 0 || !room.players[targetIndex] || fromIndex === targetIndex) {
+      json(res, 404, { error: "Player not found", room: publicRoom(room) });
+      return;
+    }
+    if (hasAlliance(room, fromIndex, targetIndex)) {
+      json(res, 200, { room: publicRoom(room) });
+      return;
+    }
+    const fromId = room.players[fromIndex].id;
+    const toId = room.players[targetIndex].id;
+    const reverseRequest = (room.allianceRequests || []).find((request) => request.fromId === toId && request.toId === fromId);
+    if (reverseRequest || room.players[targetIndex].ai) {
+      const key = allianceKey(fromIndex, targetIndex);
+      removeAllianceRequests(room, fromId, toId);
+      room.alliances = room.alliances || [];
+      room.alliances.push(key);
+      json(res, 200, { room: publicRoom(room), accepted: true });
+      return;
+    }
+    removeAllianceRequests(room, fromId, toId);
+    room.allianceRequests = room.allianceRequests || [];
+    room.allianceRequests.push({ fromId, toId });
+    json(res, 200, { room: publicRoom(room), requested: true });
+    return;
+  }
+
+  if (req.method === "POST" && action === "alliance/respond") {
+    const body = await readBody(req);
+    if (room.matchType !== "ffa") {
+      json(res, 409, { error: "Alliances are only for FFA rooms", room: publicRoom(room) });
+      return;
+    }
+    const toIndex = playerIndex(room, body.playerId);
+    const fromIndex = Number(body.fromIndex);
+    if (toIndex < 0 || !room.players[fromIndex] || toIndex === fromIndex) {
+      json(res, 404, { error: "Player not found", room: publicRoom(room) });
+      return;
+    }
+    const fromId = room.players[fromIndex].id;
+    const toId = room.players[toIndex].id;
+    const hasRequest = (room.allianceRequests || []).some((request) => request.fromId === fromId && request.toId === toId);
+    removeAllianceRequests(room, fromId, toId);
+    if (hasRequest && body.accept !== false) {
+      const key = allianceKey(fromIndex, toIndex);
+      room.alliances = room.alliances || [];
+      if (!hasAlliance(room, fromIndex, toIndex)) room.alliances.push(key);
+    }
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "alliance/break") {
+    const body = await readBody(req);
+    const fromIndex = playerIndex(room, body.playerId);
+    const targetIndex = Number(body.targetIndex);
+    if (fromIndex < 0 || !room.players[targetIndex] || fromIndex === targetIndex) {
+      json(res, 404, { error: "Player not found", room: publicRoom(room) });
+      return;
+    }
+    removeAlliance(room, fromIndex, targetIndex);
+    removeAllianceRequests(room, room.players[fromIndex].id, room.players[targetIndex].id);
+    json(res, 200, { room: publicRoom(room) });
     return;
   }
 

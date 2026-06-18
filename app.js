@@ -15,13 +15,13 @@
   const status = document.querySelector("#status");
   const copyCode = document.querySelector("#copy-code");
   const copyLink = document.querySelector("#copy-link");
+  const addAi = document.querySelector("#add-ai");
   const startGame = document.querySelector("#start-game");
   const roomCodeInput = document.querySelector("#room-code-input");
   const mapName = document.querySelector("#map-name");
   const playerCount = document.querySelector("#player-count");
   const trainingMap = document.querySelector("#training-map");
   const matchType = document.querySelector("#match-type");
-  const hostTeam = document.querySelector("#host-team");
   const tutorialTrain = document.querySelector("#tutorial-train");
   const tutorialHost = document.querySelector("#tutorial-host");
 
@@ -156,24 +156,125 @@
     return map ? map.players : 2;
   }
 
-  function playerRow(player, index) {
+  function slotTeam(type, index) {
+    if (type === "ffa") return "ffa-" + index;
+    if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
+    if (type === "3v3") return index < 3 ? "allies" : "rivals";
+    return index === 0 ? "allies" : "rivals";
+  }
+
+  function playerTeamLabel(room, player, index) {
+    if (room.matchType === "ffa" && room.alliances && room.alliances.some(function (pair) {
+      return pair.includes(index);
+    })) return "FFA Alliance";
+    const team = player.team || slotTeam(room.matchType, index);
+    if (room.matchType === "ffa" || String(team).startsWith("ffa")) return "FFA";
+    return team === "allies" ? "Allied Flock" : "Rival Flock";
+  }
+
+  function hasAlliance(room, a, b) {
+    return (room.alliances || []).some(function (pair) {
+      return pair.includes(a) && pair.includes(b);
+    });
+  }
+
+  function requestBetween(room, fromIndex, toIndex) {
+    return (room.allianceRequests || []).some(function (request) {
+      return request.fromIndex === fromIndex && request.toIndex === toIndex;
+    });
+  }
+
+  async function updateAlliance(action, body, message) {
+    if (!serverOnline || !activeRoom) {
+      status.textContent = "FFA alliances need the public multiplayer server.";
+      return;
+    }
+    const session = readSession(activeRoom.code);
+    try {
+      const data = await api("/api/rooms/" + encodeURIComponent(activeRoom.code) + "/" + action, {
+        method: "POST",
+        body: JSON.stringify(Object.assign({ playerId: session && session.playerId }, body))
+      });
+      saveRoom(data.room);
+      renderRoom(data.room);
+      status.textContent = message;
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  }
+
+  function allianceControls(room, index, localIndex) {
+    const controls = [];
+    if (!room || room.matchType !== "ffa" || room.started || localIndex === index || localIndex < 0) return controls;
+
+    if (hasAlliance(room, localIndex, index)) {
+      const button = document.createElement("button");
+      button.className = "button button--tiny";
+      button.type = "button";
+      button.textContent = "Break";
+      button.addEventListener("click", function () {
+        updateAlliance("alliance/break", { targetIndex: index }, "Alliance broken.");
+      });
+      controls.push(button);
+      return controls;
+    }
+
+    if (requestBetween(room, index, localIndex)) {
+      const accept = document.createElement("button");
+      const decline = document.createElement("button");
+      accept.className = "button button--tiny";
+      decline.className = "button button--tiny button--secondary";
+      accept.type = "button";
+      decline.type = "button";
+      accept.textContent = "Accept";
+      decline.textContent = "Decline";
+      accept.addEventListener("click", function () {
+        updateAlliance("alliance/respond", { fromIndex: index, accept: true }, "Alliance accepted.");
+      });
+      decline.addEventListener("click", function () {
+        updateAlliance("alliance/respond", { fromIndex: index, accept: false }, "Alliance declined.");
+      });
+      controls.push(accept, decline);
+      return controls;
+    }
+
+    const button = document.createElement("button");
+    button.className = "button button--tiny";
+    button.type = "button";
+    button.textContent = requestBetween(room, localIndex, index) ? "Requested" : "Request";
+    button.disabled = requestBetween(room, localIndex, index);
+    button.addEventListener("click", function () {
+      updateAlliance("alliance", { targetIndex: index }, "Alliance request sent.");
+    });
+    controls.push(button);
+    return controls;
+  }
+
+  function playerRow(room, player, index, isHost, localIndex) {
     const row = document.createElement("div");
     row.className = "player-row";
 
     const identity = document.createElement("div");
+    const actions = document.createElement("div");
     const name = document.createElement("div");
     const faction = document.createElement("div");
     const badge = document.createElement("strong");
 
     name.className = "player-name";
     faction.className = "player-faction";
+    actions.className = "player-row__actions";
 
     name.textContent = player.name || "Commander " + (index + 1);
-    faction.textContent = player.faction;
-    badge.textContent = player.host ? "Host" : "Ready";
+    faction.textContent = player.faction + " - " + playerTeamLabel(room, player, index);
+    badge.textContent = player.host ? "Host" : player.ai ? "AI" : "Ready";
+    if (player.ai) badge.className = "ai-badge";
 
     identity.append(name, faction);
-    row.append(identity, badge);
+    actions.append(badge);
+    allianceControls(room, index, localIndex).forEach(function (button) {
+      actions.append(button);
+    });
+    row.append(identity, actions);
 
     return row;
   }
@@ -195,12 +296,13 @@
       roster.append(empty);
     } else {
       room.players.forEach(function (player, index) {
-        roster.append(playerRow(player, index));
+        roster.append(playerRow(room, player, index, isHost, session ? session.playerIndex : 0));
       });
     }
 
     copyCode.disabled = !room;
     copyLink.disabled = !room;
+    addAi.disabled = !room || !isHost || room.training || room.players.length >= room.maxPlayers;
     startGame.disabled = !room || !isHost || (!room.training && room.players.length < room.maxPlayers);
     startGame.textContent = room && room.training
       ? "Start Training"
@@ -212,7 +314,8 @@
   function matchLabel(type) {
     if (type === "ffa") return "FFA";
     if (type === "2v2-ai") return "2v2 vs AI";
-    if (type === "teams") return "Teams";
+    if (type === "2v2") return "2v2";
+    if (type === "3v3") return "3v3";
     return "1v1";
   }
 
@@ -327,10 +430,10 @@
             map: chosenMap,
             maxPlayers,
             matchType: formData.get("matchType") || "1v1",
-            hostTeam: formData.get("hostTeam") || "1",
             player: {
               name: formData.get("hostName") || "Host Shepherd",
-              faction: getSelectedValue(hostForm, "hostFaction")
+              faction: getSelectedValue(hostForm, "hostFaction"),
+              team: slotTeam(formData.get("matchType") || "1v1", 0)
             }
           })
         });
@@ -354,7 +457,6 @@
       map: chosenMap,
       maxPlayers,
       matchType: formData.get("matchType") || "1v1",
-      hostTeam: formData.get("hostTeam") || "1",
       training: false,
       difficulty: "human",
       createdAt: new Date().toISOString(),
@@ -362,6 +464,7 @@
         {
           name: formData.get("hostName") || "Host Shepherd",
           faction: getSelectedValue(hostForm, "hostFaction"),
+          team: slotTeam(formData.get("matchType") || "1v1", 0),
           host: true
         }
       ]
@@ -381,14 +484,24 @@
   });
 
   matchType.addEventListener("change", function () {
+    if (matchType.value === "2v2") {
+      playerCount.value = "4";
+      fillMapSelect(mapName, 4);
+      status.textContent = "2v2 uses a 4-player map.";
+      return;
+    }
+    if (matchType.value === "3v3") {
+      playerCount.value = "6";
+      fillMapSelect(mapName, 6);
+      status.textContent = "3v3 uses a 6-player map.";
+      return;
+    }
     if (matchType.value === "2v2-ai") {
       playerCount.value = "4";
-      hostTeam.value = "1";
       fillMapSelect(mapName, 4);
       status.textContent = "2v2 vs AI uses a 4-player map.";
       return;
     }
-    if (matchType.value === "ffa") hostTeam.value = "ffa";
     status.textContent = "Match type set to " + matchLabel(matchType.value) + ".";
   });
 
@@ -459,6 +572,7 @@
     room.players.push({
       name: formData.get("joinName") || "Guest Shepherd",
       faction: getSelectedValue(joinForm, "joinFaction"),
+      team: slotTeam(room.matchType || "1v1", room.players.length),
       host: false
     });
 
@@ -516,6 +630,34 @@
     if (activeRoom) {
       copyText(inviteLink(activeRoom.code), "Invite link copied.");
     }
+  });
+
+  addAi.addEventListener("click", async function () {
+    if (!activeRoom || activeRoom.players.length >= activeRoom.maxPlayers) return;
+    const nextTeam = slotTeam(activeRoom.matchType || "1v1", activeRoom.players.length);
+    if (serverOnline) {
+      const session = readSession(activeRoom.code);
+      try {
+        const data = await api("/api/rooms/" + encodeURIComponent(activeRoom.code) + "/ai", {
+          method: "POST",
+          body: JSON.stringify({ playerId: session && session.playerId, team: nextTeam })
+        });
+        saveRoom(data.room);
+        renderRoom(data.room);
+        status.textContent = "AI added to the room.";
+      } catch (error) {
+        status.textContent = error.message;
+      }
+      return;
+    }
+    activeRoom.players.push({
+      name: "AI Shepherd " + activeRoom.players.length,
+      faction: activeRoom.players.length % 3 === 0 ? "Fire Sheep" : activeRoom.players.length % 2 === 0 ? "Mech Sheep" : "Rainbow Sheep",
+      team: nextTeam,
+      ai: true
+    });
+    saveRoom(activeRoom);
+    renderRoom(activeRoom);
   });
 
   startGame.addEventListener("click", async function () {

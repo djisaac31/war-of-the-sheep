@@ -14,6 +14,10 @@
     music: document.querySelector("#game-music"),
     musicToggle: document.querySelector("#music-toggle"),
     missionToggle: document.querySelector("#mission-toggle"),
+    allianceToggle: document.querySelector("#alliance-toggle"),
+    alliancePanel: document.querySelector("#alliance-panel"),
+    allianceClose: document.querySelector("#alliance-close"),
+    allianceList: document.querySelector("#alliance-list"),
     tutorial: document.querySelector("#tutorial-missions"),
     tutorialTitle: document.querySelector("#tutorial-title"),
     tutorialCopy: document.querySelector("#tutorial-copy"),
@@ -75,13 +79,15 @@
     lastSnapshotAt: 0,
     lastSnapshotPoll: 0,
     lastCommandPoll: 0,
+    lastRoomPoll: 0,
     applyingSnapshot: false,
     tick: 0
   };
   const networkRates = {
     commandPoll: 0.05,
     hostSnapshot: 0.055,
-    guestSnapshot: 0.045
+    guestSnapshot: 0.045,
+    roomPoll: 2.0
   };
   const isNetworkHost = network.enabled && network.playerIndex === 0;
   const isNetworkGuest = network.enabled && network.playerIndex > 0;
@@ -276,12 +282,72 @@
     return "rainbow";
   }
 
+  function slotTeam(type, index) {
+    if (type === "ffa") return "ffa-" + index;
+    if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
+    if (type === "3v3") return index < 3 ? "allies" : "rivals";
+    return index === 0 ? "allies" : "rivals";
+  }
+
+  function roomPlayer(index) {
+    return roomSettings && roomSettings.players && roomSettings.players[index] ? roomSettings.players[index] : null;
+  }
+
+  function roomPlayerTeam(index) {
+    const player = roomPlayer(index);
+    return player && player.team ? String(player.team) : slotTeam(roomSettings.matchType || "1v1", index);
+  }
+
+  function roomPlayersAllied(a, b) {
+    if (a === b) return true;
+    const pair = (roomSettings.alliances || []).find((alliance) => alliance.includes(a) && alliance.includes(b));
+    if (pair) return true;
+    const teamA = roomPlayerTeam(a);
+    const teamB = roomPlayerTeam(b);
+    if ((roomSettings.matchType || "1v1") === "ffa") return false;
+    return teamA === teamB;
+  }
+
+  function localPlayerIndex() {
+    return network.enabled ? network.playerIndex : 0;
+  }
+
+  function opponentPlayerIndex() {
+    const localIndex = localPlayerIndex();
+    const players = roomSettings.players || [];
+    const opponentIndex = players.findIndex((player, index) => player && index !== localIndex && !roomPlayersAllied(localIndex, index));
+    if (opponentIndex >= 0) return opponentIndex;
+    return network.enabled ? (network.playerIndex === 0 ? 1 : 0) : 1;
+  }
+
+  function ownerPlayerIndex(owner) {
+    return owner === "player" ? localPlayerIndex() : opponentPlayerIndex();
+  }
+
+  function ownersAreAllied(a, b) {
+    if (a === b) return true;
+    return roomPlayersAllied(ownerPlayerIndex(a), ownerPlayerIndex(b));
+  }
+
+  function isHostileTo(owner, entity) {
+    return entity && entity.owner && !ownersAreAllied(owner, entity.owner);
+  }
+
   function readRoomSettings() {
     try {
       const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms")) || {};
       return rooms[roomCode] || {};
     } catch (_error) {
       return {};
+    }
+  }
+
+  function readSession() {
+    const key = "war-of-the-sheep-session-" + roomCode;
+    try {
+      return JSON.parse(sessionStorage.getItem(key) || localStorage.getItem(key)) || null;
+    } catch (_error) {
+      return null;
     }
   }
 
@@ -297,9 +363,90 @@
       localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
       roomSettings = data.room;
       activeMap = mapProfiles[roomSettings.map] || mapProfiles["Candy Meadow"];
+      renderAlliancePanel();
     } catch (_error) {
       say("Online room server not reachable.");
     }
+  }
+
+  function allianceRequestBetween(fromIndex, toIndex) {
+    return (roomSettings.allianceRequests || []).some((request) => request.fromIndex === fromIndex && request.toIndex === toIndex);
+  }
+
+  async function updateAlliance(action, body, message) {
+    const session = readSession();
+    if (!network.enabled || !session || !session.playerId) {
+      say("Alliances need the public multiplayer server.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/rooms/" + encodeURIComponent(roomCode) + "/" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ playerId: session.playerId }, body || {}))
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Alliance failed.");
+      if (data.room) {
+        roomSettings = data.room;
+        const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms")) || {};
+        rooms[roomCode] = data.room;
+        localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
+      }
+      renderAlliancePanel();
+      say(message);
+    } catch (error) {
+      say(error.message);
+    }
+  }
+
+  function renderAlliancePanel() {
+    if (!ui.allianceToggle || !ui.alliancePanel || !ui.allianceList) return;
+    const canUseAlliances = network.enabled && roomSettings.matchType === "ffa" && (roomSettings.players || []).length > 1;
+    ui.allianceToggle.hidden = !canUseAlliances;
+    if (!canUseAlliances) {
+      ui.alliancePanel.hidden = true;
+      return;
+    }
+    const localIndex = localPlayerIndex();
+    ui.allianceList.innerHTML = "";
+    (roomSettings.players || []).forEach((player, index) => {
+      if (index === localIndex) return;
+      const row = document.createElement("div");
+      const label = document.createElement("div");
+      const name = document.createElement("strong");
+      const detail = document.createElement("small");
+      const actions = document.createElement("div");
+      const button = document.createElement("button");
+      row.className = "alliance-row";
+      actions.className = "alliance-row__actions";
+      name.textContent = player.name || "Shepherd " + (index + 1);
+      if (roomPlayersAllied(localIndex, index)) {
+        detail.textContent = "Ally - green on the minimap";
+        button.textContent = "Break";
+        button.addEventListener("click", () => updateAlliance("alliance/break", { targetIndex: index }, "Alliance broken."));
+      } else if (allianceRequestBetween(index, localIndex)) {
+        const decline = document.createElement("button");
+        detail.textContent = "They want an alliance";
+        button.textContent = "Accept";
+        button.addEventListener("click", () => updateAlliance("alliance/respond", { fromIndex: index, accept: true }, "Alliance accepted."));
+        decline.textContent = "Decline";
+        decline.addEventListener("click", () => updateAlliance("alliance/respond", { fromIndex: index, accept: false }, "Alliance declined."));
+        actions.append(decline);
+      } else if (allianceRequestBetween(localIndex, index)) {
+        detail.textContent = "Alliance request sent";
+        button.textContent = "Waiting";
+        button.disabled = true;
+      } else {
+        detail.textContent = "Enemy flock";
+        button.textContent = "Request";
+        button.addEventListener("click", () => updateAlliance("alliance", { targetIndex: index }, "Alliance request sent."));
+      }
+      label.append(name, detail);
+      actions.prepend(button);
+      row.append(label, actions);
+      ui.allianceList.append(row);
+    });
   }
 
   async function sendNetworkCommand(command) {
@@ -467,7 +614,7 @@
     state.player.faction = roomFaction();
     const pf = state.player.faction;
     const opponentByFaction = { rainbow: "mech", mech: "rainbow", fire: "mech" };
-    const opponentIndex = network.enabled ? (network.playerIndex === 0 ? 1 : 0) : 1;
+    const opponentIndex = opponentPlayerIndex();
     const roomOpponent = roomSettings && roomSettings.players && roomSettings.players[opponentIndex] && roomSettings.players[opponentIndex].faction;
     const ef = network.enabled
       ? (/mech/i.test(roomOpponent) ? "mech" : /fire/i.test(roomOpponent) ? "fire" : "rainbow")
@@ -1116,7 +1263,7 @@
   }
 
   function targetAt(wx, wy, owner = "player") {
-    const enemies = [...state.units, ...state.structures].filter((e) => e.owner !== owner);
+    const enemies = [...state.units, ...state.structures].filter((e) => isHostileTo(owner, e));
     const resources = state.resources.filter((r) => r.amount > 0 && !r.coveredBy);
     const all = [...enemies, ...resources];
     for (let i = all.length - 1; i >= 0; i -= 1) {
@@ -1148,7 +1295,7 @@
     const target = targetAt(wx, wy, owner);
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
-      if (target && target.owner !== owner && target.kind) {
+      if (target && target.kind && isHostileTo(owner, target)) {
         unit.target = target.id;
         unit.attackMove = false;
         unit.attackX = null;
@@ -1209,7 +1356,7 @@
       unit.attackMove = true;
       unit.attackX = wx + offset.x;
       unit.attackY = wy + offset.y;
-      if (target && target.owner !== owner && target.kind) {
+      if (target && target.kind && isHostileTo(owner, target)) {
         unit.target = target.id;
         const stop = attackStopPoint(unit, target, index, units.length);
         unit.tx = stop.x;
@@ -1291,6 +1438,13 @@
     if (messageTimer <= 0) toast.textContent = "Gather Marshmallows, scout, and destroy the enemy main base.";
 
     network.tick += dt;
+    if (network.enabled && roomSettings.matchType === "ffa") {
+      network.lastRoomPoll += dt;
+      if (network.lastRoomPoll > networkRates.roomPoll) {
+        network.lastRoomPoll = 0;
+        refreshOnlineRoom();
+      }
+    }
     if (isNetworkGuest) {
       network.lastSnapshotPoll += dt;
       if (network.lastSnapshotPoll > networkRates.guestSnapshot) {
@@ -1415,7 +1569,7 @@
     state.units.forEach((unit) => {
       const s = stats[unit.type];
       if (!s.damage) return;
-      const enemies = [...state.units, ...state.structures].filter((e) => e.owner !== unit.owner);
+      const enemies = [...state.units, ...state.structures].filter((e) => isHostileTo(unit.owner, e));
       let target = unit.target ? enemies.find((e) => e.id === unit.target) : null;
       if (!target) {
         target = enemies.find((e) => Math.hypot(e.x - unit.x, e.y - unit.y) < s.range + stats[e.type].radius);
@@ -1570,8 +1724,8 @@
   }
 
   function visibleToPlayer(e) {
-    if (e.owner === "player") return true;
-    const scouts = [...state.units, ...state.structures].filter((x) => x.owner === "player");
+    if (ownersAreAllied("player", e.owner)) return true;
+    const scouts = [...state.units, ...state.structures].filter((x) => ownersAreAllied("player", x.owner));
     return scouts.some((s) => Math.hypot(s.x - e.x, s.y - e.y) < (s.type === "base" ? 520 : 330));
   }
 
@@ -1814,7 +1968,7 @@
     const pct = Math.max(0, e.hp / e.maxHp);
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2, 5);
-    ctx.fillStyle = e.owner === "player" ? "#84f09b" : "#ff725e";
+    ctx.fillStyle = ownersAreAllied("player", e.owner) ? "#84f09b" : "#ff725e";
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2 * pct, 5);
   }
 
@@ -1952,7 +2106,7 @@
     fctx.fillStyle = "rgba(5,12,10,0.64)";
     fctx.fillRect(0, 0, camera.w, camera.h);
     fctx.globalCompositeOperation = "destination-out";
-    [...state.units, ...state.structures].filter((e) => e.owner === "player").forEach((e) => {
+    [...state.units, ...state.structures].filter((e) => ownersAreAllied("player", e.owner)).forEach((e) => {
       const r = e.type === "base" ? 520 : 330;
       fctx.beginPath();
       fctx.arc(e.x - camera.x, e.y - camera.y, r, 0, Math.PI * 2);
@@ -2000,7 +2154,7 @@
     });
     [...state.structures, ...state.units].forEach((e) => {
       if (!visibleToPlayer(e)) return;
-      mctx.fillStyle = e.owner === "player" ? "#7cff9a" : "#ff705d";
+      mctx.fillStyle = ownersAreAllied("player", e.owner) ? "#7cff9a" : "#ff705d";
       mctx.beginPath();
       mctx.arc(e.x * sx, e.y * sy, e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
       mctx.fill();
@@ -2243,6 +2397,17 @@
   ui.missionToggle.addEventListener("click", () => {
     setMissionPanelHidden(!tutorial.hidden);
   });
+  if (ui.allianceToggle) {
+    ui.allianceToggle.addEventListener("click", () => {
+      ui.alliancePanel.hidden = !ui.alliancePanel.hidden;
+      renderAlliancePanel();
+    });
+  }
+  if (ui.allianceClose) {
+    ui.allianceClose.addEventListener("click", () => {
+      ui.alliancePanel.hidden = true;
+    });
+  }
   ui.scoreRematch.addEventListener("click", () => {
     window.location.reload();
   });
@@ -2260,6 +2425,7 @@
   fitCanvas();
   refreshOnlineRoom().finally(() => {
     setup();
+    renderAlliancePanel();
     requestAnimationFrame(loop);
   });
 })();

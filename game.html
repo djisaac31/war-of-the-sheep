@@ -19,6 +19,7 @@
         </div>
         <button class="music-button" id="music-toggle" type="button" aria-pressed="false">Music Off</button>
         <button class="music-button" id="mission-toggle" type="button" hidden>Hide Missions</button>
+        <button class="music-button" id="alliance-toggle" type="button" hidden>Alliances</button>
         <div class="room-pill" id="room-pill">Room -----</div>
       </header>
 
@@ -31,6 +32,16 @@
             <h2 id="tutorial-title">Start the Flock</h2>
             <p id="tutorial-copy">Follow the mission steps to learn the game.</p>
             <ol id="tutorial-list"></ol>
+          </div>
+          <div class="alliance-panel" id="alliance-panel" hidden>
+            <div class="alliance-panel__head">
+              <div>
+                <p>FFA Alliances</p>
+                <h2>Flock Diplomacy</h2>
+              </div>
+              <button id="alliance-close" type="button" aria-label="Close alliances">Close</button>
+            </div>
+            <div id="alliance-list" class="alliance-list"></div>
           </div>
         </section>
 

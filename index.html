@@ -112,18 +112,10 @@
                 <span>Match Type</span>
                 <select id="match-type" name="matchType">
                   <option value="1v1">1v1 Duel</option>
+                  <option value="2v2">2v2 Team Battle</option>
+                  <option value="3v3">3v3 Team Battle</option>
                   <option value="ffa">FFA</option>
                   <option value="2v2-ai">2v2 vs AI</option>
-                  <option value="teams">Team Battle</option>
-                </select>
-              </label>
-
-              <label class="field">
-                <span>Your Team</span>
-                <select id="host-team" name="hostTeam">
-                  <option value="1">Team 1</option>
-                  <option value="2">Team 2</option>
-                  <option value="ffa">FFA</option>
                 </select>
               </label>
 
@@ -338,6 +330,10 @@
           <div class="roster" id="roster">
             <div class="empty-state">Host a game or enter a room code.</div>
           </div>
+
+          <button class="button button--secondary" id="add-ai" type="button" disabled>
+            Add AI
+          </button>
 
           <button class="button button--start" id="start-game" type="button" disabled>
             Start Skirmish
