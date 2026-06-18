@@ -78,7 +78,7 @@ function publicRoom(room) {
       team: player.team || slotTeam(room.matchType || "1v1", index),
       ai: Boolean(player.ai),
       host: index === 0,
-      ready: true
+      ready: Boolean(player.ready)
     }))
   };
 }
@@ -89,7 +89,8 @@ function createPlayer(input, fallbackName) {
     name: String(input.name || fallbackName).slice(0, 18),
     faction: String(input.faction || "Rainbow Sheep"),
     team: String(input.team || "allies"),
-    ai: Boolean(input.ai)
+    ai: Boolean(input.ai),
+    ready: Boolean(input.ready || input.ai)
   };
 }
 
@@ -126,6 +127,47 @@ function hasAlliance(room, a, b) {
   return (room.alliances || []).some((pair) => pair[0] === key[0] && pair[1] === key[1]);
 }
 
+function maxAllianceSize(room) {
+  const count = (room.players || []).length;
+  if (count <= 2) return 1;
+  return Math.max(2, Math.floor(count / 2));
+}
+
+function allianceGroup(room, index, extraPair) {
+  const pairs = (room.alliances || []).slice();
+  if (extraPair) pairs.push(allianceKey(extraPair[0], extraPair[1]));
+  const seen = new Set([index]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    pairs.forEach((pair) => {
+      const a = pair[0];
+      const b = pair[1];
+      if (seen.has(a) && !seen.has(b)) {
+        seen.add(b);
+        changed = true;
+      }
+      if (seen.has(b) && !seen.has(a)) {
+        seen.add(a);
+        changed = true;
+      }
+    });
+  }
+  return seen;
+}
+
+function canAddAlliance(room, a, b) {
+  if (room.matchType !== "ffa") return { ok: false, error: "Alliances are only for FFA rooms" };
+  if ((room.players || []).length <= 2) return { ok: false, error: "Alliances are disabled in 1v1 and 2-player rooms" };
+  const limit = maxAllianceSize(room);
+  const groupA = allianceGroup(room, a, [a, b]);
+  const groupB = allianceGroup(room, b, [a, b]);
+  if (groupA.size > limit || groupB.size > limit) {
+    return { ok: false, error: "That alliance would make one team too large for this FFA" };
+  }
+  return { ok: true };
+}
+
 function removeAlliance(room, a, b) {
   const key = allianceKey(a, b);
   room.alliances = (room.alliances || []).filter((pair) => pair[0] !== key[0] || pair[1] !== key[1]);
@@ -158,6 +200,7 @@ async function handleApi(req, res, url) {
     const code = makeRoomCode();
     const host = createPlayer(body.player || {}, "Host Shepherd");
     host.team = slotTeam(String(body.matchType || "1v1"), 0);
+    host.ready = false;
     const room = {
       code,
       map: String(body.map || "Candy Meadow"),
@@ -203,6 +246,7 @@ async function handleApi(req, res, url) {
     }
     const player = createPlayer(body.player || {}, "Guest Shepherd");
     player.team = slotTeam(room.matchType || "1v1", room.players.length);
+    player.ready = false;
     room.players.push(player);
     json(res, 200, { room: publicRoom(room), playerId: player.id, playerIndex: room.players.length - 1 });
     return;
@@ -220,8 +264,21 @@ async function handleApi(req, res, url) {
       name: "AI Shepherd " + room.players.length,
       faction: factionCycle[room.players.length % factionCycle.length],
       team: String(body.team || slotTeam(room.matchType || "1v1", room.players.length)),
-      ai: true
+      ai: true,
+      ready: true
     }, "AI Shepherd"));
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "ready") {
+    const body = await readBody(req);
+    const index = playerIndex(room, body.playerId);
+    if (index < 0 || room.players[index].ai) {
+      json(res, 404, { error: "Player not found", room: publicRoom(room) });
+      return;
+    }
+    room.players[index].ready = Boolean(body.ready);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -275,6 +332,11 @@ async function handleApi(req, res, url) {
       json(res, 200, { room: publicRoom(room) });
       return;
     }
+    const permission = canAddAlliance(room, fromIndex, targetIndex);
+    if (!permission.ok) {
+      json(res, 409, { error: permission.error, room: publicRoom(room) });
+      return;
+    }
     const fromId = room.players[fromIndex].id;
     const toId = room.players[targetIndex].id;
     const reverseRequest = (room.allianceRequests || []).find((request) => request.fromId === toId && request.toId === fromId);
@@ -310,6 +372,11 @@ async function handleApi(req, res, url) {
     const hasRequest = (room.allianceRequests || []).some((request) => request.fromId === fromId && request.toId === toId);
     removeAllianceRequests(room, fromId, toId);
     if (hasRequest && body.accept !== false) {
+      const permission = canAddAlliance(room, fromIndex, toIndex);
+      if (!permission.ok) {
+        json(res, 409, { error: permission.error, room: publicRoom(room) });
+        return;
+      }
       const key = allianceKey(fromIndex, toIndex);
       room.alliances = room.alliances || [];
       if (!hasAlliance(room, fromIndex, toIndex)) room.alliances.push(key);
@@ -340,6 +407,10 @@ async function handleApi(req, res, url) {
     }
     if (room.players.length < room.maxPlayers) {
       json(res, 409, { error: "Room is not full yet", room: publicRoom(room) });
+      return;
+    }
+    if (room.players.some((player) => !player.ready)) {
+      json(res, 409, { error: "Not everyone is ready yet", room: publicRoom(room) });
       return;
     }
     room.started = true;

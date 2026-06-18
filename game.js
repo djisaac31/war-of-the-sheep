@@ -10,6 +10,9 @@
     lollipops: document.querySelector("#lollipops"),
     marshmallows: document.querySelector("#marshmallows"),
     wool: document.querySelector("#wool"),
+    workerCount: document.querySelector("#worker-count"),
+    idleWorkers: document.querySelector("#idle-workers"),
+    idleWorkerButton: document.querySelector("#idle-worker-button"),
     room: document.querySelector("#room-pill"),
     music: document.querySelector("#game-music"),
     musicToggle: document.querySelector("#music-toggle"),
@@ -31,12 +34,18 @@
     scoreKills: document.querySelector("#score-kills"),
     scoreBuildings: document.querySelector("#score-buildings"),
     scoreResources: document.querySelector("#score-resources"),
+    scoreWorkers: document.querySelector("#score-workers"),
+    scoreArmy: document.querySelector("#score-army"),
+    scoreSpectate: document.querySelector("#score-spectate"),
     scoreRematch: document.querySelector("#score-rematch"),
     title: document.querySelector("#selection-title"),
     copy: document.querySelector("#selection-copy"),
     worker: document.querySelector("#train-worker"),
     soldier: document.querySelector("#train-soldier"),
     elite: document.querySelector("#train-elite"),
+    stop: document.querySelector("#unit-stop"),
+    hold: document.querySelector("#unit-hold"),
+    patrol: document.querySelector("#unit-patrol"),
     base: document.querySelector("#build-base"),
     supply: document.querySelector("#build-supply"),
     production: document.querySelector("#build-production"),
@@ -44,6 +53,7 @@
     forge: document.querySelector("#build-forge"),
     armor: document.querySelector("#upgrade-armor"),
     eliteArmor: document.querySelector("#upgrade-elite-armor"),
+    factionTech: document.querySelector("#upgrade-faction-tech"),
     ability: document.querySelector("#cast-ability")
   };
   const commandGroups = Array.from(document.querySelectorAll("[data-command-group]"));
@@ -69,6 +79,7 @@
   let aiBuildTimer = 0;
   let attackWaveTimer = 0;
   let messageTimer = 0;
+  let spectating = false;
 
   const params = new URLSearchParams(window.location.search);
   const roomCode = params.get("room") || "LOCAL";
@@ -89,6 +100,8 @@
     guestSnapshot: 0.045,
     roomPoll: 2.0
   };
+  const playerColors = ["#4ea2ff", "#ff705d", "#7cff9a", "#ffe066", "#c78bff", "#ffad4d"];
+  const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];
   const isNetworkHost = network.enabled && network.playerIndex === 0;
   const isNetworkGuest = network.enabled && network.playerIndex > 0;
   if (params.get("start") !== "1") {
@@ -97,6 +110,7 @@
   }
   let roomSettings = readRoomSettings();
   const tutorialMode = params.get("tutorial") === "1" || Boolean(roomSettings.tutorial);
+  const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
   const aiDifficulty = String(roomSettings.difficulty || params.get("difficulty") || "normal").toLowerCase();
   ui.room.textContent = tutorialMode
     ? "Tutorial Mission"
@@ -147,10 +161,10 @@
 
   const stats = {
     worker: { hp: 48, speed: 115, radius: 17, damage: 3, range: 24, cooldown: 0.9, wool: 1 },
-    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2 },
-    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4 },
-    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6 },
-    base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0 },
+    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, role: "Scout ranged unit" },
+    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, role: "Tank with splash damage" },
+    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, role: "Elite siege unit" },
+    base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560 },
     supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0 },
     production: { hp: 360, speed: 0, radius: 42, damage: 0, range: 0, cooldown: 1, wool: 0 },
     extractor: { hp: 280, speed: 0, radius: 36, damage: 0, range: 0, cooldown: 1, wool: 0 },
@@ -168,37 +182,42 @@
     extractor: { l: 0, m: 60 },
     forge: { l: 25, m: 125 },
     armor: { l: 45, m: 120 },
-    eliteArmor: { l: 95, m: 160 }
+    eliteArmor: { l: 95, m: 160 },
+    factionTech: { l: 70, m: 150 }
   };
 
-  const trainTimes = { worker: 8, soldier: 11, heavy: 15, elite: 22 };
+  const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24 };
   const buildTimes = { base: 30, supply: 12, production: 18, extractor: 16, forge: 20 };
   const aiProfiles = {
-    easy: { think: 18, drip: 0.65, burst: 18, gasDelay: 140, gas: 2, caps: [1, 3, 5], waveDelay: 180, waveCooldown: 70, waveSize: 4, heavyDelay: 190, heavyChance: 0.86 },
-    normal: { think: 14, drip: 1.1, burst: 28, gasDelay: 100, gas: 4, caps: [2, 4, 7], waveDelay: 150, waveCooldown: 55, waveSize: 5, heavyDelay: 160, heavyChance: 0.78 },
-    hard: { think: 11, drip: 1.4, burst: 38, gasDelay: 90, gas: 6, caps: [3, 5, 8], waveDelay: 125, waveCooldown: 45, waveSize: 6, heavyDelay: 140, heavyChance: 0.7 }
+    easy: { think: 20, drip: 0.45, burst: 14, gasDelay: 155, gas: 2, caps: [1, 3, 5], waveDelay: 190, waveCooldown: 78, waveSize: 4, heavyDelay: 205, heavyChance: 0.88 },
+    normal: { think: 16, drip: 0.8, burst: 22, gasDelay: 120, gas: 3, caps: [2, 4, 7], waveDelay: 165, waveCooldown: 64, waveSize: 5, heavyDelay: 175, heavyChance: 0.8 },
+    hard: { think: 12, drip: 1.12, burst: 32, gasDelay: 100, gas: 5, caps: [3, 5, 8], waveDelay: 140, waveCooldown: 52, waveSize: 6, heavyDelay: 155, heavyChance: 0.72 }
   };
   const aiProfile = aiProfiles[aiDifficulty] || aiProfiles.normal;
   const mapProfiles = {
     "Candy Meadow": { tint: "#6db978", clearings: [[760, 880, 360, 210, -0.2], [1710, 850, 390, 230, 0.15]], riverY: 1160, player: [330, 820], enemy: [2050, 780], playerGas: [780, 1000], enemyGas: [1640, 990] },
     "Marshmallow Crossing": { tint: "#79bfc9", clearings: [[650, 710, 330, 180, 0.05], [1570, 1020, 430, 210, -0.25]], riverY: 900, player: [310, 650], enemy: [2040, 1050], playerGas: [760, 805], enemyGas: [1650, 1120] },
     "Ember Orchard": { tint: "#9eb45c", clearings: [[690, 990, 330, 210, 0.15], [1670, 700, 400, 210, -0.15]], riverY: 1240, player: [330, 990], enemy: [2050, 650], playerGas: [805, 1110], enemyGas: [1635, 765] },
+    "Rainbow Ridge": { tint: "#86bfc8", clearings: [[560, 520, 320, 180, -0.12], [1840, 1180, 350, 190, 0.18], [1180, 850, 390, 210, 0]], riverY: 1040, player: [320, 520], enemy: [2070, 1180], playerGas: [740, 620], enemyGas: [1660, 1060] },
     "Sugar Spiral": { tint: "#76b88c", clearings: [[620, 720, 300, 190, 0], [1260, 820, 360, 210, 0.4], [1780, 1070, 320, 180, -0.2]], riverY: 1020, player: [300, 720], enemy: [2020, 1070], playerGas: [710, 820], enemyGas: [1680, 1080] },
     "Gumdrop Triangle": { tint: "#85b7d3", clearings: [[560, 1110, 320, 180, -0.1], [1220, 560, 370, 190, 0.2], [1840, 1110, 320, 180, 0.1]], riverY: 1180, player: [330, 1110], enemy: [2050, 560], playerGas: [760, 1120], enemyGas: [1660, 640] },
     "Frosting Four Corners": { tint: "#80c3a8", clearings: [[470, 560, 310, 170, 0], [1910, 560, 310, 170, 0], [470, 1220, 310, 170, 0], [1910, 1220, 310, 170, 0]], riverY: 980, player: [330, 560], enemy: [2050, 1220], playerGas: [710, 700], enemyGas: [1690, 1090] },
     "Clockwork Pastures": { tint: "#6ea6a2", clearings: [[430, 880, 300, 185, 0.2], [1030, 520, 340, 190, -0.2], [1500, 1180, 340, 190, 0.2], [2020, 820, 300, 185, -0.2]], riverY: 1080, player: [330, 880], enemy: [2050, 820], playerGas: [750, 930], enemyGas: [1660, 850] },
+    "Forge Divide": { tint: "#78ad92", clearings: [[420, 500, 300, 170, 0], [420, 1220, 300, 170, 0], [1980, 500, 300, 170, 0], [1980, 1220, 300, 170, 0], [1200, 850, 380, 220, 0.15]], riverY: 890, player: [330, 500], enemy: [2070, 1220], playerGas: [720, 650], enemyGas: [1680, 1080] },
     "Five Flock Basin": { tint: "#71bd78", clearings: [[340, 780, 280, 170, 0], [870, 450, 290, 170, 0], [1540, 450, 290, 170, 0], [2020, 780, 280, 170, 0], [1210, 1240, 360, 200, 0]], riverY: 1120, player: [330, 780], enemy: [2050, 780], playerGas: [720, 840], enemyGas: [1675, 840] },
     "Lollipop Ring": { tint: "#7ab7ad", clearings: [[520, 530, 280, 170, 0], [1840, 530, 280, 170, 0], [420, 1210, 280, 170, 0], [1960, 1210, 280, 170, 0], [1210, 850, 390, 230, 0]], riverY: 1260, player: [330, 1210], enemy: [2050, 530], playerGas: [760, 1110], enemyGas: [1660, 660] },
     "Six Shepherd Summit": { tint: "#74b994", clearings: [[360, 500, 260, 160, 0], [1210, 430, 300, 170, 0], [2040, 500, 260, 160, 0], [360, 1230, 260, 160, 0], [1210, 1300, 300, 170, 0], [2040, 1230, 260, 160, 0]], riverY: 1050, player: [330, 500], enemy: [2050, 1230], playerGas: [700, 610], enemyGas: [1690, 1120] },
-    "Marshmallow Crown": { tint: "#8bb6cf", clearings: [[410, 850, 280, 170, 0], [790, 500, 280, 170, 0], [1560, 500, 280, 170, 0], [1990, 850, 280, 170, 0], [790, 1230, 280, 170, 0], [1560, 1230, 280, 170, 0]], riverY: 930, player: [330, 850], enemy: [2050, 850], playerGas: [760, 900], enemyGas: [1660, 900] }
+    "Marshmallow Crown": { tint: "#8bb6cf", clearings: [[410, 850, 280, 170, 0], [790, 500, 280, 170, 0], [1560, 500, 280, 170, 0], [1990, 850, 280, 170, 0], [790, 1230, 280, 170, 0], [1560, 1230, 280, 170, 0]], riverY: 930, player: [330, 850], enemy: [2050, 850], playerGas: [760, 900], enemyGas: [1660, 900] },
+    "Molten Sixfold": { tint: "#8fb06b", clearings: [[360, 430, 260, 150, 0], [1150, 390, 300, 160, 0], [2030, 430, 260, 150, 0], [360, 1280, 260, 150, 0], [1150, 1320, 300, 160, 0], [2030, 1280, 260, 150, 0], [1210, 850, 410, 230, 0]], riverY: 1180, player: [330, 430], enemy: [2070, 1280], playerGas: [710, 550], enemyGas: [1680, 1160] }
   };
   let activeMap = mapProfiles[roomSettings.map] || mapProfiles["Candy Meadow"];
 
   const state = {
     player: { faction: "rainbow", lollipops: 0, marshmallows: 50, woolUsed: 3, woolMax: 12 },
-    enemy: { faction: "mech", lollipops: 0, marshmallows: aiDifficulty === "easy" ? 55 : 80, woolUsed: 0, woolMax: 40 },
+    enemy: { faction: "mech", lollipops: 0, marshmallows: aiDifficulty === "hard" ? 70 : 55, woolUsed: 0, woolMax: 40 },
     elapsed: 0,
     ended: false,
+    result: null,
     setupComplete: false,
     stats: {
       unitsCreated: 0,
@@ -215,7 +234,8 @@
   };
   const upgrades = {
     armor: { researched: false, inProgress: false, elapsed: 0, duration: 22 },
-    eliteArmor: { researched: false, inProgress: false, elapsed: 0, duration: 30 }
+    eliteArmor: { researched: false, inProgress: false, elapsed: 0, duration: 30 },
+    factionTech: { researched: false, inProgress: false, elapsed: 0, duration: 26 }
   };
   const tutorial = {
     step: 0,
@@ -324,6 +344,14 @@
     return owner === "player" ? localPlayerIndex() : opponentPlayerIndex();
   }
 
+  function playerColor(index) {
+    return playerColors[((index % playerColors.length) + playerColors.length) % playerColors.length];
+  }
+
+  function ownerColor(owner) {
+    return playerColor(ownerPlayerIndex(owner));
+  }
+
   function ownersAreAllied(a, b) {
     if (a === b) return true;
     return roomPlayersAllied(ownerPlayerIndex(a), ownerPlayerIndex(b));
@@ -402,7 +430,7 @@
 
   function renderAlliancePanel() {
     if (!ui.allianceToggle || !ui.alliancePanel || !ui.allianceList) return;
-    const canUseAlliances = network.enabled && roomSettings.matchType === "ffa" && (roomSettings.players || []).length > 1;
+    const canUseAlliances = network.enabled && roomSettings.matchType === "ffa" && (roomSettings.players || []).length > 2;
     ui.allianceToggle.hidden = !canUseAlliances;
     if (!canUseAlliances) {
       ui.alliancePanel.hidden = true;
@@ -535,12 +563,15 @@
       const exists = [...state.units, ...state.structures].some((entity) => entity.id === id && entity.owner === "player");
       if (!exists) selected.delete(id);
     });
-    if (state.ended && ui.scoreScreen.hidden) {
-      const enemyBase = state.structures.find((s) => s.owner === "enemy" && s.type === "base");
-      const playerBase = state.structures.find((s) => s.owner === "player" && s.type === "base");
-      showScoreScreen(enemyBase && !playerBase ? "defeat" : "victory");
-    }
+    if (state.ended && ui.scoreScreen.hidden) showScoreScreen(perspectiveResult(data.state.result || state.result || "victory"));
     network.applyingSnapshot = false;
+  }
+
+  function perspectiveResult(result) {
+    if (!shouldSwapPerspective()) return result;
+    if (result === "victory") return "defeat";
+    if (result === "defeat") return "victory";
+    return result;
   }
 
   function swapSnapshotPerspective(data) {
@@ -577,6 +608,8 @@
       attackMove: false,
       attackX: null,
       attackY: null,
+      hold: false,
+      patrol: null,
       harvest: null,
       selected: false,
       portraitSeed: Math.random(),
@@ -850,6 +883,10 @@
     if (!producer) return;
     const angle = Math.random() * Math.PI * 2;
     const unit = addUnit(job.owner, job.faction, job.type, producer.x + Math.cos(angle) * 95, producer.y + Math.sin(angle) * 95);
+    if (producer.rallyX !== undefined && producer.rallyY !== undefined) {
+      unit.tx = producer.rallyX;
+      unit.ty = producer.rallyY;
+    }
     applyFinishedUpgrades(unit);
     if (job.owner === "player") {
       selected.clear();
@@ -870,10 +907,14 @@
     if (unit.owner !== "player") return;
     const armorApplies = upgrades.armor.researched && (unit.type === "soldier" || unit.type === "heavy");
     const eliteArmorApplies = upgrades.eliteArmor.researched && unit.type === "elite";
-    if (!armorApplies && !eliteArmorApplies) return;
-    const bonus = armorHpBonus(unit.type);
-    unit.maxHp += bonus;
-    unit.hp += bonus;
+    if (armorApplies || eliteArmorApplies) {
+      const bonus = armorHpBonus(unit.type);
+      unit.maxHp += bonus;
+      unit.hp += bonus;
+    }
+    if (upgrades.factionTech.researched) {
+      applyFactionUpgradeToEntity(unit);
+    }
   }
 
   function updateTraining(dt) {
@@ -926,7 +967,6 @@
   function canPlace(type, x, y, owner = "player") {
     const s = stats[type];
     if ((type === "extractor" || type === "forge") && !readyStructure("production", owner)) return false;
-    if (!isInBuildZone(type, x, y, owner)) return false;
     if (type === "extractor") return Boolean(lollipopGeyserAt(x, y));
     if (sideFor(owner).faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
     if (x < s.radius || y < s.radius || x > world.w - s.radius || y > world.h - s.radius) return false;
@@ -1137,7 +1177,7 @@
     if (!spend(type)) return;
     upgrade.inProgress = true;
     upgrade.elapsed = 0;
-    say(type === "eliteArmor" ? "Elite armor research started." : "Armor research started.");
+    say(type === "factionTech" ? factionUpgradeName(state.player.faction) + " research started." : type === "eliteArmor" ? "Elite armor research started." : "Armor research started.");
   }
 
   function updateUpgrades(dt) {
@@ -1158,6 +1198,11 @@
     const upgrade = upgrades[type];
     upgrade.inProgress = false;
     upgrade.researched = true;
+    if (type === "factionTech") {
+      applyFactionUpgrade();
+      say(factionUpgradeName(state.player.faction) + " complete.");
+      return;
+    }
     const affected = type === "eliteArmor" ? ["elite"] : ["soldier", "heavy"];
     state.units.forEach((unit) => {
       if (unit.owner !== "player" || !affected.includes(unit.type)) return;
@@ -1173,6 +1218,29 @@
     if (type === "heavy") return 32;
     if (type === "soldier") return 18;
     return 0;
+  }
+
+  function factionUpgradeName(faction) {
+    if (faction === "rainbow") return "Prism Shields";
+    if (faction === "mech") return "Repair Plating";
+    return "Swarm Embers";
+  }
+
+  function applyFactionUpgrade() {
+    [...state.units, ...state.structures].filter((entity) => entity.owner === "player").forEach(applyFactionUpgradeToEntity);
+  }
+
+  function applyFactionUpgradeToEntity(entity) {
+    if (state.player.faction === "rainbow" && entity.kind === "unit") {
+      entity.maxHp += 16;
+      entity.hp += 16;
+    } else if (state.player.faction === "mech") {
+      const bonus = entity.kind === "structure" ? 35 : 12;
+      entity.maxHp += bonus;
+      entity.hp += bonus;
+    } else if (state.player.faction === "fire" && entity.kind === "unit") {
+      entity.speedBonus = 1.12;
+    }
   }
 
   function castAbility(owner = "player") {
@@ -1212,6 +1280,14 @@
       applyUnitCommand(owner, command.unitIds || [], Number(command.x), Number(command.y));
     } else if (command.action === "attackMove") {
       applyAttackMove(owner, command.unitIds || [], Number(command.x), Number(command.y));
+    } else if (command.action === "stop") {
+      applyStop(owner, command.unitIds || []);
+    } else if (command.action === "hold") {
+      applyHold(owner, command.unitIds || []);
+    } else if (command.action === "patrol") {
+      applyPatrol(owner, command.unitIds || [], Number(command.x), Number(command.y));
+    } else if (command.action === "rally") {
+      applyRally(owner, command.structureIds || [], Number(command.x), Number(command.y));
     } else if (command.action === "train") {
       queueTraining(command.type, owner);
     } else if (command.action === "build") {
@@ -1258,6 +1334,12 @@
     });
   }
 
+  function updateHitFlashes(dt) {
+    [...state.units, ...state.structures].forEach((entity) => {
+      if (entity.hitFlash) entity.hitFlash = Math.max(0, entity.hitFlash - dt);
+    });
+  }
+
   function selectableAt(wx, wy) {
     const all = [...state.units, ...state.structures].filter((e) => e.owner === "player");
     for (let i = all.length - 1; i >= 0; i -= 1) {
@@ -1280,6 +1362,14 @@
   function issueCommand(wx, wy) {
     const units = state.units.filter((u) => selected.has(u.id));
     if (!units.length) {
+      const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base"));
+      if (structures.length) {
+        if (isNetworkGuest) sendNetworkCommand({ action: "rally", structureIds: structures.map((s) => s.id), x: wx, y: wy });
+        else applyRally("player", structures.map((s) => s.id), wx, wy);
+        state.effects.push({ x: wx, y: wy, r: 7, life: 0.8, color: "#f2bf4d", kind: "move" });
+        say("Rally point set.");
+        return;
+      }
       say("Select your sheep first, then right-click where you want them to go.");
       return;
     }
@@ -1302,6 +1392,8 @@
       if (target && target.kind && isHostileTo(owner, target)) {
         unit.target = target.id;
         unit.attackMove = false;
+        unit.hold = false;
+        unit.patrol = null;
         unit.attackX = null;
         unit.attackY = null;
         unit.harvest = null;
@@ -1312,6 +1404,8 @@
         unit.harvest = target.id;
         unit.target = null;
         unit.attackMove = false;
+        unit.hold = false;
+        unit.patrol = null;
         unit.attackX = null;
         unit.attackY = null;
         unit.tx = target.x + offset.x * 0.5;
@@ -1322,6 +1416,8 @@
         unit.target = null;
         unit.harvest = null;
         unit.attackMove = false;
+        unit.hold = false;
+        unit.patrol = null;
         unit.attackX = null;
         unit.attackY = null;
         unit.tx = wx + offset.x;
@@ -1350,6 +1446,90 @@
     say("Attack move issued.");
   }
 
+  function selectedUnitIds() {
+    return state.units.filter((u) => selected.has(u.id)).map((u) => u.id);
+  }
+
+  function issueStop() {
+    const ids = selectedUnitIds();
+    if (!ids.length) return say("Select units first.");
+    if (isNetworkGuest) sendNetworkCommand({ action: "stop", unitIds: ids });
+    else applyStop("player", ids);
+    say("Units stopped.");
+  }
+
+  function issueHold() {
+    const ids = selectedUnitIds();
+    if (!ids.length) return say("Select units first.");
+    if (isNetworkGuest) sendNetworkCommand({ action: "hold", unitIds: ids });
+    else applyHold("player", ids);
+    say("Holding position.");
+  }
+
+  function issuePatrol(wx, wy) {
+    const ids = selectedUnitIds();
+    if (!ids.length) {
+      say("Select units before using patrol.");
+      return;
+    }
+    if (isNetworkGuest) sendNetworkCommand({ action: "patrol", unitIds: ids, x: wx, y: wy });
+    else applyPatrol("player", ids, wx, wy);
+    state.effects.push({ x: wx, y: wy, r: 8, life: 1, color: "#83e79a", kind: "move" });
+    commandMode = null;
+    say("Patrol route set.");
+  }
+
+  function applyStop(owner, unitIds) {
+    state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner).forEach((unit) => {
+      unit.target = null;
+      unit.harvest = null;
+      unit.attackMove = false;
+      unit.attackX = null;
+      unit.attackY = null;
+      unit.hold = false;
+      unit.patrol = null;
+      unit.tx = unit.x;
+      unit.ty = unit.y;
+    });
+  }
+
+  function applyHold(owner, unitIds) {
+    state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner).forEach((unit) => {
+      unit.target = null;
+      unit.harvest = null;
+      unit.attackMove = false;
+      unit.attackX = null;
+      unit.attackY = null;
+      unit.patrol = null;
+      unit.hold = true;
+      unit.tx = unit.x;
+      unit.ty = unit.y;
+    });
+  }
+
+  function applyPatrol(owner, unitIds, wx, wy) {
+    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner);
+    units.forEach((unit, index) => {
+      const offset = formationOffset(index, units.length);
+      unit.target = null;
+      unit.harvest = null;
+      unit.hold = false;
+      unit.attackMove = true;
+      unit.attackX = wx + offset.x;
+      unit.attackY = wy + offset.y;
+      unit.patrol = { ax: unit.x, ay: unit.y, bx: wx + offset.x, by: wy + offset.y, toB: true };
+      unit.tx = unit.patrol.bx;
+      unit.ty = unit.patrol.by;
+    });
+  }
+
+  function applyRally(owner, structureIds, wx, wy) {
+    state.structures.filter((s) => structureIds.includes(s.id) && s.owner === owner && (s.type === "production" || s.type === "base")).forEach((structure) => {
+      structure.rallyX = wx;
+      structure.rallyY = wy;
+    });
+  }
+
   function applyAttackMove(owner, unitIds, wx, wy) {
     const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && u.kind !== "structure");
     if (!units.length) return;
@@ -1357,6 +1537,8 @@
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
       unit.harvest = null;
+      unit.hold = false;
+      unit.patrol = null;
       unit.attackMove = true;
       unit.attackX = wx + offset.x;
       unit.attackY = wy + offset.y;
@@ -1489,6 +1671,7 @@
     updateConstructions(dt);
     updateExtractors(dt);
     updateUpgrades(dt);
+    updateHitFlashes(dt);
     fight(dt);
     cleanup();
     updateTutorial();
@@ -1536,7 +1719,10 @@
 
     if (unit.target) {
       const target = [...state.units, ...state.structures].find((e) => e.id === unit.target);
-      if (target) {
+      if (target && unit.hold) {
+        const s = stats[unit.type];
+        if (Math.hypot(target.x - unit.x, target.y - unit.y) > s.range + stats[target.type].radius) unit.target = null;
+      } else if (target) {
         const stop = attackStopPoint(unit, target);
         unit.tx = stop.x;
         unit.ty = stop.y;
@@ -1551,7 +1737,7 @@
       }
     }
 
-    const speed = stats[unit.type].speed;
+    const speed = stats[unit.type].speed * (unit.speedBonus || 1);
     const dx = unit.tx - unit.x;
     const dy = unit.ty - unit.y;
     const d = Math.hypot(dx, dy);
@@ -1563,9 +1749,17 @@
       unit.y = Math.max(30, Math.min(world.h - 30, unit.y));
       pushUnitOutOfBuildings(unit);
     } else if (unit.attackMove && !unit.target && unit.attackX !== null && unit.attackY !== null) {
-      unit.attackMove = false;
-      unit.attackX = null;
-      unit.attackY = null;
+      if (unit.patrol) {
+        unit.patrol.toB = !unit.patrol.toB;
+        unit.attackX = unit.patrol.toB ? unit.patrol.bx : unit.patrol.ax;
+        unit.attackY = unit.patrol.toB ? unit.patrol.by : unit.patrol.ay;
+        unit.tx = unit.attackX;
+        unit.ty = unit.attackY;
+      } else {
+        unit.attackMove = false;
+        unit.attackX = null;
+        unit.attackY = null;
+      }
     }
   }
 
@@ -1585,13 +1779,27 @@
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
         target.hp -= damageAfterArmor(s.damage, target);
+        target.hitFlash = 0.18;
+        if (s.splash) applySplashDamage(unit, target, s.damage * 0.45, s.splash);
         if (s.range > 55) fireBullet(unit, target, factionData[unit.faction].accent);
         else burst(target.x, target.y, factionData[unit.faction].accent);
+        state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.2, r: 5, life: 0.25, color: "#fff7c4", kind: "spark" });
         if (target.type === "base" && target.hp <= 0) {
           if (target.owner === "enemy") state.stats.enemiesDestroyed += 1;
         }
       }
     });
+  }
+
+  function applySplashDamage(unit, target, damage, radius) {
+    [...state.units, ...state.structures].forEach((entity) => {
+      if (entity.id === target.id || !isHostileTo(unit.owner, entity)) return;
+      const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
+      if (distance > radius + stats[entity.type].radius) return;
+      entity.hp -= damageAfterArmor(damage, entity);
+      entity.hitFlash = 0.14;
+    });
+    state.effects.push({ x: target.x, y: target.y, r: radius * 0.22, life: 0.35, color: factionData[unit.faction].accent });
   }
 
   function damageAfterArmor(damage, target) {
@@ -1637,6 +1845,8 @@
   function endMatch(result) {
     if (state.ended) return;
     state.ended = true;
+    state.result = result;
+    if (isNetworkHost) publishNetworkSnapshot();
     showScoreScreen(result);
   }
 
@@ -1655,7 +1865,57 @@
     ui.scoreKills.textContent = state.stats.enemiesDestroyed;
     ui.scoreBuildings.textContent = state.stats.structuresBuilt;
     ui.scoreResources.textContent = state.stats.marshmallowsGathered;
+    ui.scoreWorkers.textContent = state.units.filter((u) => u.owner === "player" && u.type === "worker").length;
+    ui.scoreArmy.textContent = state.units.filter((u) => u.owner === "player" && u.type !== "worker").length;
+    ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
+    if (tutorialMode) {
+      const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
+      if (result === "victory" && nextFaction) {
+        ui.scoreTitle.textContent = "Tutorial Complete";
+        ui.scoreSummary.textContent = "Great work. Next lesson: " + nextFaction + ".";
+        ui.scoreRematch.textContent = "Next Race";
+      } else if (result === "victory") {
+        ui.scoreTitle.textContent = "Tutorial Finished";
+        ui.scoreSummary.textContent = "You completed Rainbow, Mech, and Fire Sheep training.";
+        ui.scoreRematch.textContent = "Back to Lobby";
+      } else {
+        ui.scoreRematch.textContent = "Try Again";
+      }
+    } else {
+      ui.scoreRematch.textContent = "Play Again";
+    }
     ui.scoreScreen.hidden = false;
+  }
+
+  function makeTutorialRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 5; i += 1) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  }
+
+  function launchTutorialRace(index) {
+    const faction = tutorialFactions[index] || tutorialFactions[0];
+    const opponent = faction === "Mech Sheep" ? "Fire Sheep" : "Mech Sheep";
+    const code = makeTutorialRoomCode();
+    const room = {
+      code,
+      map: "Candy Meadow",
+      maxPlayers: 2,
+      training: true,
+      tutorial: true,
+      difficulty: "easy",
+      createdAt: new Date().toISOString(),
+      players: [
+        { name: "Tutorial Shepherd", faction, host: true },
+        { name: "Training Flock", faction: opponent, host: false, ai: true }
+      ]
+    };
+    const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms")) || {};
+    rooms[code] = room;
+    localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
+    localStorage.setItem("magic-sheep-tutorial-race", String(index));
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1";
   }
 
   async function startMatchMusic() {
@@ -1730,7 +1990,7 @@
   function visibleToPlayer(e) {
     if (ownersAreAllied("player", e.owner)) return true;
     const scouts = [...state.units, ...state.structures].filter((x) => ownersAreAllied("player", x.owner));
-    return scouts.some((s) => Math.hypot(s.x - e.x, s.y - e.y) < (s.type === "base" ? 520 : 330));
+    return scouts.some((s) => Math.hypot(s.x - e.x, s.y - e.y) < (stats[s.type].vision || 330));
   }
 
   function draw() {
@@ -1747,6 +2007,7 @@
     state.units.forEach((u) => {
       if (visibleToPlayer(u)) drawEntity(u);
     });
+    drawRallyPoints();
     state.effects.forEach(drawEffect);
     drawPlacementGhost();
     drawCommandCursor();
@@ -1836,7 +2097,7 @@
     ctx.save();
     ctx.translate(e.x, e.y);
     if (selected.has(e.id)) {
-      ctx.strokeStyle = "#fff47a";
+      ctx.strokeStyle = ownerColor(e.owner);
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.ellipse(0, 8, s.radius + 10, (s.radius + 10) * 0.56, 0, 0, Math.PI * 2);
@@ -1849,6 +2110,15 @@
 
     if (e.kind === "structure") drawStructureShape(e, f, s);
     else drawUnitShape(e, f, s);
+
+    if (e.hitFlash > 0) {
+      ctx.globalAlpha = Math.min(0.45, e.hitFlash * 2.5);
+      ctx.fillStyle = "#fff7c4";
+      ctx.beginPath();
+      ctx.ellipse(0, -4, s.radius * 1.25, s.radius * 1.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     drawHealth(e, s);
     if (e.underConstruction) drawProgressBar(e.buildProgress, e.buildTime, s.radius, "#f2bf4d");
@@ -1877,7 +2147,7 @@
       ctx.drawImage(poster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, -drawH * 0.66, drawW, drawH);
       ctx.restore();
     }
-    ctx.strokeStyle = f.color;
+    ctx.strokeStyle = e.owner ? ownerColor(e.owner) : f.color;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(0, -4, s.radius + 8, 0, Math.PI * 2);
@@ -1904,7 +2174,7 @@
       ctx.drawImage(buildingsPoster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, drawY, drawW, drawH);
       ctx.restore();
     }
-    ctx.strokeStyle = e.type === "base" ? f.color : f.accent;
+    ctx.strokeStyle = e.owner ? ownerColor(e.owner) : "rgba(255, 255, 255, 0.8)";
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.ellipse(0, 6, s.radius * 1.2, s.radius * 0.76, 0, 0, Math.PI * 2);
@@ -1972,7 +2242,7 @@
     const pct = Math.max(0, e.hp / e.maxHp);
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2, 5);
-    ctx.fillStyle = ownersAreAllied("player", e.owner) ? "#84f09b" : "#ff725e";
+    ctx.fillStyle = ownerColor(e.owner);
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2 * pct, 5);
   }
 
@@ -2065,9 +2335,15 @@
     ctx.globalAlpha = 0.72;
     ctx.translate(ghost.x, ghost.y);
     drawStructureShape({ type: placement.type, faction: state.player.faction }, factionData[state.player.faction], s);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = valid ? "#7cff9a" : "#ff725e";
-    ctx.fillStyle = valid ? "rgba(124,255,154,0.14)" : "rgba(255,114,94,0.16)";
+    if (!valid) {
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = "rgba(255,255,255,0.62)";
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+    } else {
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+    }
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.ellipse(0, 8, s.radius * 1.35, s.radius * 0.9, 0, 0, Math.PI * 2);
@@ -2083,10 +2359,10 @@
   }
 
   function drawCommandCursor() {
-    if (commandMode !== "attack" || placement) return;
+    if (!commandMode || placement) return;
     ctx.save();
-    ctx.strokeStyle = "#ffef7a";
-    ctx.fillStyle = "rgba(255, 239, 122, 0.12)";
+    ctx.strokeStyle = commandMode === "patrol" ? "#83e79a" : "#ffef7a";
+    ctx.fillStyle = commandMode === "patrol" ? "rgba(131, 231, 154, 0.12)" : "rgba(255, 239, 122, 0.12)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(mouse.wx, mouse.wy, 26, 0, Math.PI * 2);
@@ -2103,6 +2379,25 @@
     ctx.lineTo(mouse.wx, mouse.wy + 36);
     ctx.stroke();
     ctx.restore();
+  }
+
+  function drawRallyPoints() {
+    state.structures.forEach((structure) => {
+      if (!selected.has(structure.id) || structure.rallyX === undefined || !visibleToPlayer(structure)) return;
+      ctx.save();
+      ctx.strokeStyle = "#f2bf4d";
+      ctx.fillStyle = "rgba(242,191,77,0.18)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(structure.x, structure.y);
+      ctx.lineTo(structure.rallyX, structure.rallyY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(structure.rallyX, structure.rallyY, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    });
   }
 
   function drawFog() {
@@ -2158,7 +2453,7 @@
     });
     [...state.structures, ...state.units].forEach((e) => {
       if (!visibleToPlayer(e)) return;
-      mctx.fillStyle = ownersAreAllied("player", e.owner) ? "#7cff9a" : "#ff705d";
+      mctx.fillStyle = ownerColor(e.owner);
       mctx.beginPath();
       mctx.arc(e.x * sx, e.y * sy, e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
       mctx.fill();
@@ -2172,6 +2467,11 @@
     ui.lollipops.textContent = Math.floor(state.player.lollipops);
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
     ui.wool.textContent = state.player.woolUsed + " / " + state.player.woolMax;
+    const workers = state.units.filter((u) => u.owner === "player" && u.type === "worker");
+    const idleWorkers = idleWorkerList();
+    ui.workerCount.textContent = workers.length;
+    ui.idleWorkers.textContent = idleWorkers.length;
+    ui.idleWorkerButton.disabled = idleWorkers.length === 0;
     const picked = [...state.units, ...state.structures].filter((e) => selected.has(e.id));
     showCommandGroups([]);
     if (!picked.length) {
@@ -2187,7 +2487,10 @@
     const hasBarracks = Boolean(readyStructure("production"));
     const hasForge = Boolean(readyStructure("forge"));
     if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
-      showCommandGroups(["basic-build", "advanced-build"]);
+      showCommandGroups(["unit", "basic-build", "advanced-build"]);
+      ui.stop.disabled = false;
+      ui.hold.disabled = false;
+      ui.patrol.disabled = false;
       ui.base.disabled = false;
       ui.supply.disabled = false;
       ui.production.disabled = false;
@@ -2205,6 +2508,12 @@
       showCommandGroups(["forge"]);
       ui.armor.disabled = upgrades.armor.researched || upgrades.armor.inProgress;
       ui.eliteArmor.disabled = !upgrades.armor.researched || upgrades.eliteArmor.researched || upgrades.eliteArmor.inProgress;
+      ui.factionTech.disabled = upgrades.factionTech.researched || upgrades.factionTech.inProgress;
+    } else if (!first.underConstruction && first.kind === "unit") {
+      showCommandGroups(["unit"]);
+      ui.stop.disabled = false;
+      ui.hold.disabled = false;
+      ui.patrol.disabled = false;
     }
     ui.title.textContent = picked.length === 1 ? label : picked.length + " selected";
     if (first.underConstruction) {
@@ -2233,8 +2542,17 @@
   function activeUpgradeText() {
     if (upgrades.armor.inProgress) return "Researching Armor: " + Math.ceil(upgrades.armor.duration - upgrades.armor.elapsed) + " seconds remaining.";
     if (upgrades.eliteArmor.inProgress) return "Researching Elite Armor: " + Math.ceil(upgrades.eliteArmor.duration - upgrades.eliteArmor.elapsed) + " seconds remaining.";
-    if (upgrades.armor.researched && upgrades.eliteArmor.researched) return "All armor upgrades complete.";
+    if (upgrades.factionTech.inProgress) return "Researching " + factionUpgradeName(state.player.faction) + ": " + Math.ceil(upgrades.factionTech.duration - upgrades.factionTech.elapsed) + " seconds remaining.";
+    if (upgrades.armor.researched && upgrades.eliteArmor.researched && upgrades.factionTech.researched) return "All upgrades complete.";
     return "";
+  }
+
+  function idleWorkerList() {
+    return state.units.filter((unit) => {
+      if (unit.owner !== "player" || unit.type !== "worker") return false;
+      const moving = Math.hypot(unit.tx - unit.x, unit.ty - unit.y) > 8;
+      return !moving && !unit.harvest && !unit.buildTask && !unit.target;
+    });
   }
 
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -2255,7 +2573,7 @@
       }
       if (commandMode) {
         commandMode = null;
-        say("Attack command cancelled.");
+        say("Command cancelled.");
         return;
       }
       issueCommand(p.wx, p.wy);
@@ -2263,6 +2581,10 @@
     }
     if (event.button === 0 && commandMode === "attack") {
       issueAttackMove(p.wx, p.wy);
+      return;
+    }
+    if (event.button === 0 && commandMode === "patrol") {
+      issuePatrol(p.wx, p.wy);
       return;
     }
     mouse.down = true;
@@ -2331,6 +2653,40 @@
       say("Attack move: click an enemy or a spot on the map.");
       return;
     }
+    if ((event.key === "p" || event.key === "P") && !event.ctrlKey && !event.metaKey) {
+      const units = state.units.filter((u) => selected.has(u.id));
+      if (!units.length) {
+        say("Select units first, then press P.");
+        return;
+      }
+      commandMode = "patrol";
+      event.preventDefault();
+      say("Patrol: click the other end of the route.");
+      return;
+    }
+    if ((event.key === "s" || event.key === "S") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      issueStop();
+      return;
+    }
+    if ((event.key === "h" || event.key === "H") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      issueHold();
+      return;
+    }
+    if ((event.key === "w" || event.key === "W") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "worker" });
+      else queueTraining("worker");
+      return;
+    }
+    if ((event.key === "b" || event.key === "B") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      const worker = state.units.find((u) => selected.has(u.id) && u.owner === "player" && u.type === "worker");
+      if (worker) say("Build menu ready: use the build buttons at bottom right.");
+      else say("Select a worker to build.");
+      return;
+    }
     if (!/^[1-9]$/.test(event.key)) return;
     if (event.ctrlKey || event.metaKey) {
       controlGroups.set(event.key, [...selected]);
@@ -2355,6 +2711,24 @@
     startMatchMusic();
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "elite" });
     else queueTraining("elite");
+  });
+  ui.stop.addEventListener("click", () => {
+    startMatchMusic();
+    issueStop();
+  });
+  ui.hold.addEventListener("click", () => {
+    startMatchMusic();
+    issueHold();
+  });
+  ui.patrol.addEventListener("click", () => {
+    startMatchMusic();
+    const units = state.units.filter((u) => selected.has(u.id));
+    if (!units.length) {
+      say("Select units first.");
+      return;
+    }
+    commandMode = "patrol";
+    say("Patrol: click the other end of the route.");
   });
   ui.supply.addEventListener("click", () => {
     startMatchMusic();
@@ -2384,10 +2758,26 @@
     startMatchMusic();
     startUpgrade("eliteArmor");
   });
+  ui.factionTech.addEventListener("click", () => {
+    startMatchMusic();
+    startUpgrade("factionTech");
+  });
   ui.ability.addEventListener("click", () => {
     startMatchMusic();
     if (isNetworkGuest) sendNetworkCommand({ action: "ability" });
     else castAbility();
+  });
+  ui.idleWorkerButton.addEventListener("click", () => {
+    const idle = idleWorkerList()[0];
+    if (!idle) {
+      say("No idle workers.");
+      return;
+    }
+    selected.clear();
+    selected.add(idle.id);
+    camera.x = Math.max(0, Math.min(world.w - camera.w, idle.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, idle.y - camera.h / 2));
+    say("Idle worker selected.");
   });
   ui.musicToggle.addEventListener("click", async () => {
     if (ui.music.paused) {
@@ -2413,7 +2803,23 @@
     });
   }
   ui.scoreRematch.addEventListener("click", () => {
+    if (tutorialMode && state.result === "victory") {
+      const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
+      if (nextFaction) {
+        launchTutorialRace(tutorialFactionIndex + 1);
+        return;
+      }
+      localStorage.removeItem("magic-sheep-tutorial-race");
+      window.location.href = "./index.html";
+      return;
+    }
     window.location.reload();
+  });
+  ui.scoreSpectate.addEventListener("click", () => {
+    spectating = true;
+    selected.clear();
+    ui.scoreScreen.hidden = true;
+    say("Spectating through allied vision.");
   });
 
   function loop(now) {

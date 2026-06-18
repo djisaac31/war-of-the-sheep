@@ -32,14 +32,17 @@
     { name: "Candy Meadow", players: 2 },
     { name: "Marshmallow Crossing", players: 2 },
     { name: "Ember Orchard", players: 2 },
+    { name: "Rainbow Ridge", players: 2 },
     { name: "Sugar Spiral", players: 3 },
     { name: "Gumdrop Triangle", players: 3 },
     { name: "Frosting Four Corners", players: 4 },
     { name: "Clockwork Pastures", players: 4 },
+    { name: "Forge Divide", players: 4 },
     { name: "Five Flock Basin", players: 5 },
     { name: "Lollipop Ring", players: 5 },
     { name: "Six Shepherd Summit", players: 6 },
-    { name: "Marshmallow Crown", players: 6 }
+    { name: "Marshmallow Crown", players: 6 },
+    { name: "Molten Sixfold", players: 6 }
   ];
 
   function readRooms() {
@@ -214,10 +217,24 @@
       });
       saveRoom(data.room);
       renderRoom(data.room);
-      status.textContent = "Lobby updated.";
+      if (action === "ready") {
+        status.textContent = body.ready ? "You are ready." : "You are not ready yet.";
+      } else if (action === "team") {
+        status.textContent = "Team changed.";
+      } else if (action === "faction") {
+        status.textContent = "Faction changed.";
+      } else {
+        status.textContent = "Lobby updated.";
+      }
     } catch (error) {
       status.textContent = error.message;
     }
+  }
+
+  function everyoneReady(room) {
+    return room && room.players.length >= room.maxPlayers && room.players.every(function (player) {
+      return Boolean(player.ready);
+    });
   }
 
   function hasAlliance(room, a, b) {
@@ -253,7 +270,7 @@
 
   function allianceControls(room, index, localIndex) {
     const controls = [];
-    if (!room || room.matchType !== "ffa" || room.started || localIndex === index || localIndex < 0) return controls;
+    if (!room || room.matchType !== "ffa" || room.players.length <= 2 || room.started || localIndex === index || localIndex < 0) return controls;
 
     if (hasAlliance(room, localIndex, index)) {
       const button = document.createElement("button");
@@ -317,7 +334,7 @@
 
     name.textContent = player.name || "Commander " + (index + 1);
     faction.textContent = player.faction + " - " + playerTeamLabel(room, player, index);
-    badge.textContent = player.host ? "Host" : player.ai ? "AI" : "Ready";
+    badge.textContent = player.host ? (player.ready ? "Host Ready" : "Host") : player.ai ? "AI" : player.ready ? "Ready" : "Not Ready";
     if (player.ai) badge.className = "ai-badge";
 
     identity.append(name, faction);
@@ -333,6 +350,19 @@
         });
       }
     ));
+    if (!player.ai && !room.started && localIndex === index) {
+      const readyButton = document.createElement("button");
+      readyButton.className = "button button--tiny";
+      readyButton.type = "button";
+      readyButton.textContent = player.ready ? "You are Ready" : "Ready Up";
+      readyButton.title = player.ready ? "Click if you are not ready anymore." : "Click when you are ready.";
+      readyButton.addEventListener("click", function () {
+        updateRoomSlot("ready", { ready: !player.ready }, function () {
+          activeRoom.players[index].ready = !activeRoom.players[index].ready;
+        });
+      });
+      actions.append(readyButton);
+    }
     const canChangeFaction = (!player.ai && localIndex === index) || (isHost && player.ai);
     actions.append(makeSlotSelect(
       "Race",
@@ -378,11 +408,12 @@
     copyCode.disabled = !room;
     copyLink.disabled = !room;
     addAi.disabled = !room || !isHost || room.training || room.players.length >= room.maxPlayers;
-    startGame.disabled = !room || !isHost || (!room.training && room.players.length < room.maxPlayers);
+    startGame.disabled = !room || !isHost || (!room.training && !everyoneReady(room));
     startGame.textContent = room && room.training
       ? "Start Training"
       : room && !isHost ? "Waiting for Host"
       : room && room.players.length < room.maxPlayers ? "Waiting for Players"
+      : room && !everyoneReady(room) ? "Waiting for Ready"
       : "Start Skirmish";
   }
 
@@ -406,7 +437,8 @@
         const session = readSession(code);
         if (data.room.started && session) launchRoom(code);
         else if (data.room.players.length < data.room.maxPlayers) status.textContent = "Waiting for players in room " + code + ".";
-        else if ((readSession(code) || {}).playerIndex === 0) status.textContent = "Room full. Host can press Start Skirmish.";
+        else if (!everyoneReady(data.room)) status.textContent = "Room full. Waiting for everyone to press Ready.";
+        else if ((readSession(code) || {}).playerIndex === 0) status.textContent = "Everyone is ready. Host can press Start Skirmish.";
         else status.textContent = "Room full. Waiting for the host to start.";
       } catch (_error) {
         status.textContent = "Waiting for the room server.";
@@ -450,6 +482,11 @@
   });
 
   tutorialTrain.addEventListener("click", function () {
+    const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];
+    const savedIndex = Number(localStorage.getItem("magic-sheep-tutorial-race") || 0);
+    const factionIndex = Number.isFinite(savedIndex) ? Math.max(0, Math.min(tutorialFactions.length - 1, savedIndex)) : 0;
+    const faction = tutorialFactions[factionIndex];
+    const opponent = faction === "Mech Sheep" ? "Fire Sheep" : "Mech Sheep";
     const code = makeRoomCode();
     const room = {
       code,
@@ -462,12 +499,12 @@
       players: [
         {
           name: "Tutorial Shepherd",
-          faction: "Rainbow Sheep",
+          faction,
           host: true
         },
         {
           name: "Training Flock",
-          faction: "Mech Sheep",
+          faction: opponent,
           host: false,
           ai: true
         }
@@ -477,7 +514,8 @@
     saveRoom(room);
     renderRoom(room);
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
-    status.textContent = "Starting tutorial mission.";
+    localStorage.setItem("magic-sheep-tutorial-race", String(factionIndex));
+    status.textContent = "Starting " + faction + " tutorial mission.";
     window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1";
   });
 
@@ -508,7 +546,8 @@
             player: {
               name: formData.get("hostName") || "Host Shepherd",
               faction: getSelectedValue(hostForm, "hostFaction"),
-              team: slotTeam(formData.get("matchType") || "1v1", 0)
+              team: slotTeam(formData.get("matchType") || "1v1", 0),
+              ready: false
             }
           })
         });
@@ -540,6 +579,7 @@
           name: formData.get("hostName") || "Host Shepherd",
           faction: getSelectedValue(hostForm, "hostFaction"),
           team: slotTeam(formData.get("matchType") || "1v1", 0),
+          ready: false,
           host: true
         }
       ]
@@ -648,6 +688,7 @@
       name: formData.get("joinName") || "Guest Shepherd",
       faction: getSelectedValue(joinForm, "joinFaction"),
       team: slotTeam(room.matchType || "1v1", room.players.length),
+      ready: false,
       host: false
     });
 
@@ -673,11 +714,13 @@
         {
           name: formData.get("trainName") || "Training Shepherd",
           faction: getSelectedValue(trainForm, "trainFaction"),
+          ready: true,
           host: true
         },
         {
           name: "AI Flock",
           faction: "Mech Sheep",
+          ready: true,
           host: false,
           ai: true
         }
@@ -729,6 +772,7 @@
       name: "AI Shepherd " + activeRoom.players.length,
       faction: activeRoom.players.length % 3 === 0 ? "Fire Sheep" : activeRoom.players.length % 2 === 0 ? "Mech Sheep" : "Rainbow Sheep",
       team: nextTeam,
+      ready: true,
       ai: true
     });
     saveRoom(activeRoom);
