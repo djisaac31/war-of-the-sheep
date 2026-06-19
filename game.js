@@ -214,6 +214,7 @@
 
   const state = {
     player: { faction: "rainbow", lollipops: 0, marshmallows: 50, woolUsed: 3, woolMax: 12 },
+    ally: { faction: "rainbow", lollipops: 0, marshmallows: 50, woolUsed: 0, woolMax: 0 },
     enemy: { faction: "mech", lollipops: 0, marshmallows: aiDifficulty === "hard" ? 70 : 55, woolUsed: 0, woolMax: 40 },
     elapsed: 0,
     ended: false,
@@ -345,7 +346,13 @@
   }
 
   function ownerPlayerIndex(owner) {
-    return owner === "player" ? localPlayerIndex() : opponentPlayerIndex();
+    if (owner === "player") return localPlayerIndex();
+    if (owner === "ally") {
+      const localIndex = localPlayerIndex();
+      const allyIndex = (roomSettings.players || []).findIndex((player, index) => player && index !== localIndex && roomPlayersAllied(localIndex, index));
+      return allyIndex >= 0 ? allyIndex : localIndex;
+    }
+    return opponentPlayerIndex();
   }
 
   function playerColor(index) {
@@ -358,6 +365,7 @@
 
   function ownersAreAllied(a, b) {
     if (a === b) return true;
+    if ((a === "player" && b === "ally") || (a === "ally" && b === "player")) return true;
     return roomPlayersAllied(ownerPlayerIndex(a), ownerPlayerIndex(b));
   }
 
@@ -666,6 +674,10 @@
       state.enemy.lollipops = 0;
       state.enemy.woolUsed = 3;
       state.enemy.woolMax = 12;
+      state.ally.marshmallows = 50;
+      state.ally.lollipops = 0;
+      state.ally.woolUsed = 0;
+      state.ally.woolMax = 0;
     }
     if (tutorialMode) {
       state.player.marshmallows = 160;
@@ -677,6 +689,8 @@
     }
     state.player.woolUsed = 0;
     state.player.woolMax = 0;
+    state.ally.woolUsed = 0;
+    state.ally.woolMax = 0;
     state.enemy.woolUsed = 0;
     state.enemy.woolMax = 0;
     const playerStart = { x: activeMap.player[0], y: activeMap.player[1] };
@@ -717,7 +731,7 @@
     const localIndex = localPlayerIndex();
     players.forEach((player, index) => {
       const start = starts[index] || starts[starts.length - 1] || { x: activeMap.enemy[0], y: activeMap.enemy[1] };
-      const owner = roomPlayersAllied(localIndex, index) ? "player" : "enemy";
+      const owner = index === localIndex ? "player" : roomPlayersAllied(localIndex, index) ? "ally" : "enemy";
       const faction = factionKey(player.faction);
       const mirror = owner === "enemy";
       spawnStartingFlock(owner, faction, start.x, start.y, mirror, Boolean(player.ai));
@@ -862,7 +876,9 @@
   }
 
   function sideFor(owner) {
-    return owner === "enemy" ? state.enemy : state.player;
+    if (owner === "enemy") return state.enemy;
+    if (owner === "ally") return state.ally;
+    return state.player;
   }
 
   function hasComputerEnemy() {
@@ -1717,10 +1733,11 @@
 
     if ((!network.enabled || isNetworkHost && hasComputerEnemy()) && !tutorialMode && aiTimer > aiProfile.think) {
       aiTimer = 0;
-      enemyThink();
+      enemyThink("enemy");
+      if (network.enabled) enemyThink("ally");
     }
 
-    if ((!network.enabled || isNetworkHost && hasComputerEnemy()) && !tutorialMode) state.enemy.marshmallows += dt * aiProfile.drip;
+    if (!network.enabled && !tutorialMode) state.enemy.marshmallows += dt * aiProfile.drip;
 
     updateTraining(dt);
     state.units.forEach((unit) => updateUnit(unit, dt));
@@ -1756,8 +1773,7 @@
         unit.tx = drop.x;
         unit.ty = drop.y;
         if (dist(unit, base) < stats.base.radius + stats.worker.radius + 34) {
-          if (unit.owner === "player") state.player.marshmallows += unit.carry;
-          else state.enemy.marshmallows += unit.carry;
+          sideFor(unit.owner).marshmallows += unit.carry;
           if (unit.owner === "player") state.stats.marshmallowsGathered += Math.floor(unit.carry);
           unit.carry = 0;
           unit.tx = resource.x;
@@ -1885,8 +1901,8 @@
     });
     updateEffects();
 
-    const enemyBase = state.structures.find((s) => s.owner === "enemy" && s.type === "base");
-    const playerBase = state.structures.find((s) => s.owner === "player" && s.type === "base");
+    const enemyBase = state.structures.find((s) => isHostileTo("player", s) && s.type === "base");
+    const playerBase = state.structures.find((s) => ownersAreAllied("player", s.owner) && s.type === "base");
     if (!enemyBase) endMatch("victory");
     if (!playerBase) endMatch("defeat");
   }
@@ -1987,60 +2003,103 @@
     }
   }
 
-  function enemyThink() {
-    const base = state.structures.find((s) => s.owner === "enemy" && s.type === "base");
-    const playerBase = state.structures.find((s) => s.owner === "player" && s.type === "base");
-    if (!base || !playerBase) return;
+  function enemyThink(owner = "enemy") {
+    const side = sideFor(owner);
+    const base = state.structures.find((s) => s.owner === owner && s.type === "base");
+    const targetBase = owner === "ally" ? defendedBaseForAlly() : nearestHostileBase(owner, base);
+    if (!base || !targetBase) return;
 
-    state.enemy.marshmallows += aiProfile.burst;
-    if (state.elapsed > aiProfile.gasDelay) state.enemy.lollipops += aiProfile.gas;
-    let production = state.structures.find((s) => s.owner === "enemy" && s.type === "production" && !s.underConstruction);
-    const rebuildingProduction = state.structures.some((s) => s.owner === "enemy" && s.type === "production" && s.underConstruction);
+    assignAiHarvesters(owner);
+    if (!network.enabled) {
+      side.marshmallows += aiProfile.burst;
+      if (state.elapsed > aiProfile.gasDelay) side.lollipops += aiProfile.gas;
+    }
+    let production = state.structures.find((s) => s.owner === owner && s.type === "production" && !s.underConstruction);
+    const rebuildingProduction = state.structures.some((s) => s.owner === owner && s.type === "production" && s.underConstruction);
     if (!production) {
-      if (!rebuildingProduction && aiBuildTimer > 24 && state.enemy.marshmallows >= costs.production.m) {
+      if (!rebuildingProduction && aiBuildTimer > 24 && side.marshmallows >= costs.production.m) {
         aiBuildTimer = 0;
-        state.enemy.marshmallows -= costs.production.m;
-        const rebuilt = addStructure("enemy", state.enemy.faction, "production", base.x - 95, base.y - 125);
+        side.marshmallows -= costs.production.m;
+        const rebuilt = addStructure(owner, base.faction, "production", base.x - 95, base.y - 125);
         rebuilt.underConstruction = true;
         rebuilt.buildTime = buildTimes.production + 6;
         rebuilt.buildProgress = 0;
         rebuilt.buildStarted = true;
         rebuilt.hp = Math.max(1, Math.floor(rebuilt.maxHp * 0.1));
-        if (visibleToPlayer(rebuilt)) say("Enemy Barracks rebuilding near their base.");
+        if (owner === "enemy" && visibleToPlayer(rebuilt)) say("Enemy Barracks rebuilding near their base.");
       }
       return;
     }
-    const enemyArmy = state.units.filter((u) => u.owner === "enemy" && u.type !== "worker");
+    const enemyArmy = state.units.filter((u) => u.owner === owner && u.type !== "worker");
     const armyCap = state.elapsed < 90 ? aiProfile.caps[0] : state.elapsed < 150 ? aiProfile.caps[1] : aiProfile.caps[2];
-    if (state.enemy.marshmallows >= 75 && enemyArmy.length < armyCap) {
-      const type = state.elapsed > aiProfile.heavyDelay && state.enemy.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
-      if (state.enemy.lollipops >= costs[type].l && state.enemy.marshmallows >= costs[type].m) {
-        state.enemy.lollipops -= costs[type].l;
-        state.enemy.marshmallows -= costs[type].m;
-        const unit = addUnit("enemy", state.enemy.faction, type, production.x - 60, production.y + (Math.random() - 0.5) * 90);
+    if (side.marshmallows >= 75 && enemyArmy.length < armyCap) {
+      const type = state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
+      if (side.lollipops >= costs[type].l && side.marshmallows >= costs[type].m) {
+        side.lollipops -= costs[type].l;
+        side.marshmallows -= costs[type].m;
+        const unit = addUnit(owner, production.faction, type, production.x - 60, production.y + (Math.random() - 0.5) * 90);
         unit.tx = production.x - 120 + Math.random() * 70;
         unit.ty = production.y - 90 + Math.random() * 180;
       }
     }
 
-    const playerCrossedMap = state.units.some((u) => u.owner === "player" && u.x > world.w * 0.55);
+    const playerCrossedMap = state.units.some((u) => isHostileTo(owner, u) && Math.hypot(u.x - base.x, u.y - base.y) < 520);
+    const defenseTarget = owner === "ally" ? urgentThreatNearAllies() : null;
     const waveReady = state.elapsed > aiProfile.waveDelay && attackWaveTimer > aiProfile.waveCooldown && enemyArmy.length >= 4;
-    if (!playerCrossedMap && !waveReady) {
+    if (!defenseTarget && !playerCrossedMap && !waveReady) {
       return;
     }
 
     attackWaveTimer = 0;
+    const destination = defenseTarget || targetBase;
     enemyArmy.slice(0, aiProfile.waveSize).forEach((u, index) => {
       const offset = formationOffset(index, Math.min(aiProfile.waveSize, enemyArmy.length));
       u.target = null;
       u.harvest = null;
       u.attackMove = true;
-      u.attackX = playerBase.x + offset.x;
-      u.attackY = playerBase.y + offset.y;
+      u.attackX = destination.x + offset.x;
+      u.attackY = destination.y + offset.y;
       u.tx = u.attackX;
       u.ty = u.attackY;
     });
-    say("Enemy attack-move wave spotted. Rally the flock.");
+    if (owner === "enemy") say("Enemy attack-move wave spotted. Rally the flock.");
+  }
+
+  function nearestHostileBase(owner, from) {
+    const bases = state.structures.filter((s) => s.type === "base" && isHostileTo(owner, s));
+    if (!from) return bases[0] || null;
+    return bases.sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y))[0] || null;
+  }
+
+  function defendedBaseForAlly() {
+    const playerBase = state.structures.find((s) => s.owner === "player" && s.type === "base");
+    return playerBase || nearestHostileBase("ally", state.structures.find((s) => s.owner === "ally" && s.type === "base"));
+  }
+
+  function urgentThreatNearAllies() {
+    const alliedBases = state.structures.filter((s) => ownersAreAllied("player", s.owner) && s.type === "base");
+    const threats = [...state.units, ...state.structures].filter((e) => isHostileTo("player", e));
+    for (const base of alliedBases) {
+      const threat = threats.find((e) => Math.hypot(e.x - base.x, e.y - base.y) < 620);
+      if (threat) return threat;
+    }
+    return null;
+  }
+
+  function assignAiHarvesters(owner) {
+    state.units.filter((u) => u.owner === owner && u.type === "worker" && !u.harvest && !u.buildTask).forEach((worker) => {
+      const resource = nearestResource(worker, "marshmallow");
+      if (!resource) return;
+      worker.harvest = resource.id;
+      worker.tx = resource.x;
+      worker.ty = resource.y;
+    });
+  }
+
+  function nearestResource(unit, type) {
+    return state.resources
+      .filter((resource) => resource.type === type && resource.amount > 0 && !resource.coveredBy)
+      .sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0] || null;
   }
 
   function visibleToPlayer(e) {
