@@ -122,7 +122,11 @@
       headers: { "Content-Type": "application/json" }
     }, options || {}));
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Server error");
+    if (!response.ok) {
+      const error = new Error(data.error || "Server error");
+      error.data = data;
+      throw error;
+    }
     return data;
   }
 
@@ -194,8 +198,14 @@
     });
     select.value = value;
     select.disabled = disabled;
-    select.addEventListener("change", function () {
-      onChange(select.value);
+    select.addEventListener("change", async function () {
+      const previousValue = value;
+      select.disabled = true;
+      text.textContent = label + " saving";
+      const changed = await onChange(select.value);
+      if (changed === false) select.value = previousValue;
+      text.textContent = label;
+      select.disabled = disabled;
     });
     wrap.append(text, select);
     return wrap;
@@ -208,7 +218,7 @@
       localUpdate();
       saveRoom(activeRoom);
       renderRoom(activeRoom);
-      return;
+      return true;
     }
     try {
       const data = await api("/api/rooms/" + encodeURIComponent(activeRoom.code) + "/" + action, {
@@ -226,8 +236,16 @@
       } else {
         status.textContent = "Lobby updated.";
       }
+      return true;
     } catch (error) {
+      if (error.data && error.data.room) {
+        saveRoom(error.data.room);
+        renderRoom(error.data.room);
+      } else {
+        renderRoom(activeRoom);
+      }
       status.textContent = error.message;
+      return false;
     }
   }
 

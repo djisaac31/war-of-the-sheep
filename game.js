@@ -42,18 +42,23 @@
     copy: document.querySelector("#selection-copy"),
     worker: document.querySelector("#train-worker"),
     soldier: document.querySelector("#train-soldier"),
+    heavy: document.querySelector("#train-heavy"),
     elite: document.querySelector("#train-elite"),
+    extraHeavy: document.querySelector("#train-extra-heavy"),
     stop: document.querySelector("#unit-stop"),
     hold: document.querySelector("#unit-hold"),
     patrol: document.querySelector("#unit-patrol"),
     base: document.querySelector("#build-base"),
     supply: document.querySelector("#build-supply"),
     production: document.querySelector("#build-production"),
+    defenseTower: document.querySelector("#build-defense-tower"),
     extractor: document.querySelector("#build-extractor"),
     forge: document.querySelector("#build-forge"),
+    heavyTech: document.querySelector("#build-heavy-tech"),
     armor: document.querySelector("#upgrade-armor"),
     eliteArmor: document.querySelector("#upgrade-elite-armor"),
     factionTech: document.querySelector("#upgrade-faction-tech"),
+    unloadTower: document.querySelector("#unload-tower"),
     ability: document.querySelector("#cast-ability")
   };
   const commandGroups = Array.from(document.querySelectorAll("[data-command-group]"));
@@ -126,6 +131,8 @@
       soldier: "Gleamling",
       heavy: "Prism Guard",
       elite: "Rainbow Colossus",
+      extraHeavy: "Wool Immortal",
+      heavyTech: "Prism Citadel",
       base: "Rainbow Tree",
       ability: "Prism Burst",
       atlas: [0.02, 0.16, 0.31, 0.74],
@@ -139,6 +146,8 @@
       soldier: "Bolt Lamb",
       heavy: "Gear Ram",
       elite: "Candy Tank",
+      extraHeavy: "Thunder Ram",
+      heavyTech: "Machine Yard",
       base: "Candy Command Barn",
       ability: "Repair Pulse",
       atlas: [0.35, 0.16, 0.31, 0.74],
@@ -152,6 +161,8 @@
       soldier: "Sparkling",
       heavy: "Iron Ram",
       elite: "Inferno Titan",
+      extraHeavy: "Elder Ember",
+      heavyTech: "Ancient Flame Ewe",
       base: "Mother Ember",
       ability: "Warm Wool",
       atlas: [0.68, 0.16, 0.30, 0.74],
@@ -164,11 +175,14 @@
     soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, role: "Scout ranged unit" },
     heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, role: "Tank with splash damage" },
     elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, role: "Elite siege unit" },
+    extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, role: "Extra heavy ground breaker" },
     base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560 },
     supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0 },
     production: { hp: 360, speed: 0, radius: 42, damage: 0, range: 0, cooldown: 1, wool: 0 },
     extractor: { hp: 280, speed: 0, radius: 36, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    forge: { hp: 320, speed: 0, radius: 39, damage: 0, range: 0, cooldown: 1, wool: 0 }
+    forge: { hp: 320, speed: 0, radius: 39, damage: 0, range: 0, cooldown: 1, wool: 0 },
+    heavyTech: { hp: 430, speed: 0, radius: 46, damage: 0, range: 0, cooldown: 1, wool: 0 },
+    defenseTower: { hp: 310, speed: 0, radius: 32, damage: 16, range: 270, cooldown: 0.9, wool: 0, vision: 430 }
   };
 
   const costs = {
@@ -176,18 +190,21 @@
     soldier: { l: 0, m: 75 },
     heavy: { l: 35, m: 110 },
     elite: { l: 80, m: 130 },
+    extraHeavy: { l: 150, m: 260 },
     base: { l: 0, m: 300 },
     supply: { l: 0, m: 95 },
     production: { l: 0, m: 145 },
+    defenseTower: { l: 35, m: 125 },
     extractor: { l: 0, m: 60 },
     forge: { l: 25, m: 125 },
+    heavyTech: { l: 85, m: 190 },
     armor: { l: 45, m: 120 },
     eliteArmor: { l: 95, m: 160 },
     factionTech: { l: 70, m: 150 }
   };
 
-  const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24 };
-  const buildTimes = { base: 30, supply: 12, production: 18, extractor: 16, forge: 20 };
+  const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, extraHeavy: 34 };
+  const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28 };
   const aiProfiles = {
     easy: { think: 20, drip: 0.45, burst: 14, gasDelay: 155, gas: 2, caps: [1, 3, 5], waveDelay: 190, waveCooldown: 78, waveSize: 4, heavyDelay: 205, heavyChance: 0.88 },
     normal: { think: 16, drip: 0.8, burst: 22, gasDelay: 120, gas: 3, caps: [2, 4, 7], waveDelay: 165, waveCooldown: 64, waveSize: 5, heavyDelay: 175, heavyChance: 0.8 },
@@ -361,6 +378,11 @@
 
   function ownerColor(owner) {
     return playerColor(ownerPlayerIndex(owner));
+  }
+
+  function minimapOwnerColor(owner) {
+    if (owner === "player") return ownerColor(owner);
+    return ownersAreAllied("player", owner) ? "#7cff9a" : "#ff705d";
   }
 
   function ownersAreAllied(a, b) {
@@ -623,6 +645,8 @@
       hold: false,
       patrol: null,
       harvest: null,
+      garrisonTarget: null,
+      garrisonedIn: null,
       selected: false,
       portraitSeed: Math.random(),
       buildTask: null
@@ -649,7 +673,9 @@
       underConstruction: false,
       buildProgress: 0,
       buildTime: 0,
-      buildStarted: false
+      buildStarted: false,
+      garrisonedWorkerId: null,
+      cooldown: 0
     };
     state.structures.push(structure);
     return structure;
@@ -927,10 +953,14 @@
   }
 
   function queueTraining(type, owner = "player") {
-    const producerType = type === "worker" ? "base" : "production";
+    const producerType = type === "worker" ? "base" : type === "extraHeavy" ? "heavyTech" : "production";
     const producer = readyStructure(producerType, owner);
     if (!producer) {
-      if (owner === "player") say(type === "worker" ? "You need a living main base." : "Build a Barracks before training army units.");
+      if (owner === "player") {
+        if (type === "worker") say("You need a living main base.");
+        else if (type === "extraHeavy") say("Build Heavy Tech before training extra heavy units.");
+        else say("Build a Barracks before training army units.");
+      }
       return;
     }
     if (type === "elite" && !readyStructure("forge", owner)) {
@@ -947,7 +977,7 @@
       elapsed: 0,
       duration: trainTimes[type]
     });
-    if (owner === "player") say(type === "worker" ? "Worker queued." : unitLabel(type, state.player.faction) + " queued at the Barracks.");
+    if (owner === "player") say(type === "worker" ? "Worker queued." : unitLabel(type, state.player.faction) + " queued.");
   }
 
   function finishTraining(job) {
@@ -972,13 +1002,14 @@
     if (type === "worker") return f.worker;
     if (type === "heavy") return f.heavy;
     if (type === "elite") return f.elite;
+    if (type === "extraHeavy") return f.extraHeavy;
     return f.soldier;
   }
 
   function applyFinishedUpgrades(unit) {
     if (unit.owner !== "player") return;
     const armorApplies = upgrades.armor.researched && (unit.type === "soldier" || unit.type === "heavy");
-    const eliteArmorApplies = upgrades.eliteArmor.researched && unit.type === "elite";
+    const eliteArmorApplies = upgrades.eliteArmor.researched && (unit.type === "elite" || unit.type === "extraHeavy");
     if (armorApplies || eliteArmorApplies) {
       const bonus = armorHpBonus(unit.type);
       unit.maxHp += bonus;
@@ -1008,7 +1039,7 @@
       say("Select a worker first, then choose a building.");
       return;
     }
-    if ((type === "extractor" || type === "forge") && !readyStructure("production")) {
+    if ((type === "extractor" || type === "forge" || type === "heavyTech") && !readyStructure("production")) {
       say("Build a Barracks to unlock advanced worker buildings.");
       return;
     }
@@ -1024,6 +1055,10 @@
     beginStructurePlacement("production");
   }
 
+  function buildDefenseTower() {
+    beginStructurePlacement("defenseTower");
+  }
+
   function buildBase() {
     beginStructurePlacement("base");
   }
@@ -1036,9 +1071,13 @@
     beginStructurePlacement("forge");
   }
 
+  function buildHeavyTech() {
+    beginStructurePlacement("heavyTech");
+  }
+
   function canPlace(type, x, y, owner = "player") {
     const s = stats[type];
-    if ((type === "extractor" || type === "forge") && !readyStructure("production", owner)) return false;
+    if ((type === "extractor" || type === "forge" || type === "heavyTech") && !readyStructure("production", owner)) return false;
     if (type === "extractor") return Boolean(lollipopGeyserAt(x, y));
     if (sideFor(owner).faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
     if (x < s.radius || y < s.radius || x > world.w - s.radius || y > world.h - s.radius) return false;
@@ -1197,6 +1236,8 @@
       if (structure.type === "supply") say("Supply building complete.");
       else if (structure.type === "extractor") say("Lollipop Extractor complete. Lolligas is flowing.");
       else if (structure.type === "forge") say("Forge complete. Armor upgrades unlocked.");
+      else if (structure.type === "heavyTech") say(factionData[structure.faction].heavyTech + " complete. Extra heavy units unlocked.");
+      else if (structure.type === "defenseTower") say("Defence Tower complete. Right-click it with a worker to man the cannon.");
       else say("Barracks complete. Army training unlocked.");
     } else if (structure.type === "supply") {
       state.enemy.woolMax += 8;
@@ -1275,7 +1316,7 @@
       say(factionUpgradeName(state.player.faction) + " complete.");
       return;
     }
-    const affected = type === "eliteArmor" ? ["elite"] : ["soldier", "heavy"];
+    const affected = type === "eliteArmor" ? ["elite", "extraHeavy"] : ["soldier", "heavy"];
     state.units.forEach((unit) => {
       if (unit.owner !== "player" || !affected.includes(unit.type)) return;
       const bonus = armorHpBonus(unit.type);
@@ -1287,6 +1328,7 @@
 
   function armorHpBonus(type) {
     if (type === "elite") return 50;
+    if (type === "extraHeavy") return 70;
     if (type === "heavy") return 32;
     if (type === "soldier") return 18;
     return 0;
@@ -1358,6 +1400,10 @@
       applyHold(owner, command.unitIds || []);
     } else if (command.action === "patrol") {
       applyPatrol(owner, command.unitIds || [], Number(command.x), Number(command.y));
+    } else if (command.action === "garrisonTower") {
+      applyGarrisonTower(owner, command.unitIds || [], Number(command.towerId));
+    } else if (command.action === "unloadTower") {
+      unloadTower(owner, Number(command.towerId));
     } else if (command.action === "rally") {
       applyRally(owner, command.structureIds || [], Number(command.x), Number(command.y));
     } else if (command.action === "train") {
@@ -1413,15 +1459,25 @@
   }
 
   function selectableAt(wx, wy) {
-    const all = [...state.units, ...state.structures].filter((e) => e.owner === "player");
+    const all = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => e.owner === "player");
     for (let i = all.length - 1; i >= 0; i -= 1) {
       if (Math.hypot(all[i].x - wx, all[i].y - wy) < stats[all[i].type].radius + 8) return all[i];
     }
     return null;
   }
 
+  function friendlyTowerAt(wx, wy, owner = "player") {
+    const towers = state.structures.filter((structure) => {
+      return structure.owner === owner && structure.type === "defenseTower" && !structure.underConstruction && !structure.garrisonedWorkerId;
+    });
+    for (let i = towers.length - 1; i >= 0; i -= 1) {
+      if (Math.hypot(towers[i].x - wx, towers[i].y - wy) < stats.defenseTower.radius + 18) return towers[i];
+    }
+    return null;
+  }
+
   function targetAt(wx, wy, owner = "player") {
-    const enemies = [...state.units, ...state.structures].filter((e) => isHostileTo(owner, e));
+    const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(owner, e));
     const resources = state.resources.filter((r) => r.amount > 0 && !r.coveredBy);
     const all = [...enemies, ...resources];
     for (let i = all.length - 1; i >= 0; i -= 1) {
@@ -1432,9 +1488,9 @@
   }
 
   function issueCommand(wx, wy) {
-    const units = state.units.filter((u) => selected.has(u.id));
+    const units = state.units.filter((u) => selected.has(u.id) && !u.garrisonedIn);
     if (!units.length) {
-      const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base"));
+      const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech"));
       if (structures.length) {
         if (isNetworkGuest) sendNetworkCommand({ action: "rally", structureIds: structures.map((s) => s.id), x: wx, y: wy });
         else applyRally("player", structures.map((s) => s.id), wx, wy);
@@ -1443,6 +1499,15 @@
         return;
       }
       say("Select your sheep first, then right-click where you want them to go.");
+      return;
+    }
+    const tower = friendlyTowerAt(wx, wy, "player");
+    const workers = units.filter((unit) => unit.type === "worker");
+    if (tower && workers.length) {
+      if (isNetworkGuest) sendNetworkCommand({ action: "garrisonTower", unitIds: workers.map((u) => u.id), towerId: tower.id });
+      else applyGarrisonTower("player", workers.map((u) => u.id), tower.id);
+      state.effects.push({ x: tower.x, y: tower.y, r: 9, life: 0.9, color: "#f2bf4d", kind: "move" });
+      say("Worker moving to man the defence tower.");
       return;
     }
     if (isNetworkGuest) {
@@ -1456,13 +1521,14 @@
   }
 
   function applyUnitCommand(owner, unitIds, wx, wy) {
-    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner);
+    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && !u.garrisonedIn);
     if (!units.length) return;
     const target = targetAt(wx, wy, owner);
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
       if (target && target.kind && isHostileTo(owner, target)) {
         unit.target = target.id;
+        unit.garrisonTarget = null;
         unit.attackMove = false;
         unit.hold = false;
         unit.patrol = null;
@@ -1475,6 +1541,7 @@
       } else if (target && target.amount && target.type === "marshmallow" && unit.type === "worker") {
         unit.harvest = target.id;
         unit.target = null;
+        unit.garrisonTarget = null;
         unit.attackMove = false;
         unit.hold = false;
         unit.patrol = null;
@@ -1487,6 +1554,7 @@
       } else {
         unit.target = null;
         unit.harvest = null;
+        unit.garrisonTarget = null;
         unit.attackMove = false;
         unit.hold = false;
         unit.patrol = null;
@@ -1595,8 +1663,62 @@
     });
   }
 
+  function applyGarrisonTower(owner, unitIds, towerId) {
+    const tower = state.structures.find((s) => s.id === towerId && s.owner === owner && s.type === "defenseTower" && !s.underConstruction);
+    if (!tower || tower.garrisonedWorkerId) return;
+    const worker = state.units.find((u) => unitIds.includes(u.id) && u.owner === owner && u.type === "worker" && !u.garrisonedIn);
+    if (!worker) return;
+    worker.target = null;
+    worker.harvest = null;
+    worker.buildTask = null;
+    worker.attackMove = false;
+    worker.patrol = null;
+    worker.garrisonTarget = tower.id;
+    worker.tx = tower.x;
+    worker.ty = tower.y;
+  }
+
+  function enterTower(worker, tower) {
+    if (!worker || !tower || tower.garrisonedWorkerId || tower.underConstruction) return;
+    worker.garrisonTarget = null;
+    worker.garrisonedIn = tower.id;
+    worker.x = tower.x;
+    worker.y = tower.y;
+    worker.tx = tower.x;
+    worker.ty = tower.y;
+    worker.target = null;
+    worker.harvest = null;
+    worker.buildTask = null;
+    selected.delete(worker.id);
+    tower.garrisonedWorkerId = worker.id;
+    if (worker.owner === "player") {
+      selected.add(tower.id);
+      say("Worker is manning the defence tower cannon.");
+    }
+  }
+
+  function unloadTower(owner, towerId) {
+    const tower = state.structures.find((s) => s.id === towerId && s.owner === owner && s.type === "defenseTower");
+    if (!tower || !tower.garrisonedWorkerId) return;
+    const worker = state.units.find((u) => u.id === tower.garrisonedWorkerId);
+    tower.garrisonedWorkerId = null;
+    if (!worker) return;
+    const exit = constructionExitPoint(tower, worker);
+    worker.garrisonedIn = null;
+    worker.garrisonTarget = null;
+    worker.x = exit.x;
+    worker.y = exit.y;
+    worker.tx = exit.x;
+    worker.ty = exit.y;
+    if (owner === "player") {
+      selected.clear();
+      selected.add(worker.id);
+      say("Worker left the defence tower.");
+    }
+  }
+
   function applyRally(owner, structureIds, wx, wy) {
-    state.structures.filter((s) => structureIds.includes(s.id) && s.owner === owner && (s.type === "production" || s.type === "base")).forEach((structure) => {
+    state.structures.filter((s) => structureIds.includes(s.id) && s.owner === owner && (s.type === "production" || s.type === "base" || s.type === "heavyTech")).forEach((structure) => {
       structure.rallyX = wx;
       structure.rallyY = wy;
     });
@@ -1753,6 +1875,32 @@
 
   function updateUnit(unit, dt) {
     unit.cooldown = Math.max(0, unit.cooldown - dt);
+    if (unit.garrisonedIn) {
+      const tower = state.structures.find((structure) => structure.id === unit.garrisonedIn);
+      if (!tower) unit.garrisonedIn = null;
+      else {
+        unit.x = tower.x;
+        unit.y = tower.y;
+        unit.tx = tower.x;
+        unit.ty = tower.y;
+        return;
+      }
+    }
+    if (unit.garrisonTarget) {
+      const tower = state.structures.find((structure) => structure.id === unit.garrisonTarget);
+      if (!tower || tower.underConstruction || tower.garrisonedWorkerId) {
+        unit.garrisonTarget = null;
+      } else if (Math.hypot(unit.x - tower.x, unit.y - tower.y) < stats.defenseTower.radius + stats.worker.radius + 12) {
+        enterTower(unit, tower);
+        return;
+      } else {
+        unit.target = null;
+        unit.harvest = null;
+        unit.buildTask = null;
+        unit.tx = tower.x;
+        unit.ty = tower.y;
+      }
+    }
     if (unit.buildTask) {
       unit.target = null;
       unit.attackMove = false;
@@ -1836,10 +1984,24 @@
   }
 
   function fight(dt) {
+    state.structures.forEach((structure) => {
+      if (structure.type !== "defenseTower" || structure.underConstruction || !structure.garrisonedWorkerId) return;
+      structure.cooldown = Math.max(0, (structure.cooldown || 0) - dt);
+      const s = stats.defenseTower;
+      const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(structure.owner, e));
+      const target = enemies.find((e) => Math.hypot(e.x - structure.x, e.y - structure.y) < s.range + stats[e.type].radius);
+      if (!target || structure.cooldown > 0) return;
+      structure.cooldown = s.cooldown;
+      target.hp -= damageAfterArmor(s.damage, target);
+      target.hitFlash = 0.18;
+      fireBullet(structure, target, factionData[structure.faction].accent);
+      state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.2, r: 5, life: 0.25, color: "#fff7c4", kind: "spark" });
+    });
     state.units.forEach((unit) => {
+      if (unit.garrisonedIn) return;
       const s = stats[unit.type];
       if (!s.damage) return;
-      const enemies = [...state.units, ...state.structures].filter((e) => isHostileTo(unit.owner, e));
+      const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(unit.owner, e));
       let target = unit.target ? enemies.find((e) => e.id === unit.target) : null;
       if (!target) {
         target = enemies.find((e) => Math.hypot(e.x - unit.x, e.y - unit.y) < s.range + stats[e.type].radius);
@@ -1864,7 +2026,7 @@
   }
 
   function applySplashDamage(unit, target, damage, radius) {
-    [...state.units, ...state.structures].forEach((entity) => {
+    [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].forEach((entity) => {
       if (entity.id === target.id || !isHostileTo(unit.owner, entity)) return;
       const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
       if (distance > radius + stats[entity.type].radius) return;
@@ -1876,7 +2038,7 @@
 
   function damageAfterArmor(damage, target) {
     if (target.owner !== "player" || target.kind !== "unit") return damage;
-    if (target.type === "elite" && upgrades.eliteArmor.researched) return Math.max(1, damage - 5);
+    if ((target.type === "elite" || target.type === "extraHeavy") && upgrades.eliteArmor.researched) return Math.max(1, damage - 5);
     if ((target.type === "soldier" || target.type === "heavy") && upgrades.armor.researched) return Math.max(1, damage - 3);
     return damage;
   }
@@ -1891,7 +2053,23 @@
       return false;
     });
     state.structures = state.structures.filter((s) => {
-      if (s.hp > 0) return true;
+      if (s.hp > 0) {
+        if (s.garrisonedWorkerId && !state.units.some((u) => u.id === s.garrisonedWorkerId && u.garrisonedIn === s.id)) {
+          s.garrisonedWorkerId = null;
+        }
+        return true;
+      }
+      if (s.garrisonedWorkerId) {
+        const worker = state.units.find((u) => u.id === s.garrisonedWorkerId);
+        if (worker) {
+          worker.garrisonedIn = null;
+          worker.garrisonTarget = null;
+          worker.x = s.x + stats[s.type].radius + stats.worker.radius + 18;
+          worker.y = s.y;
+          worker.tx = worker.x;
+          worker.ty = worker.y;
+        }
+      }
       if (s.type === "extractor" && s.resourceId) {
         const resource = state.resources.find((r) => r.id === s.resourceId);
         if (resource) resource.coveredBy = null;
@@ -2030,16 +2208,32 @@
       }
       return;
     }
+    let heavyTech = state.structures.find((s) => s.owner === owner && s.type === "heavyTech" && !s.underConstruction);
+    const rebuildingHeavyTech = state.structures.some((s) => s.owner === owner && s.type === "heavyTech" && s.underConstruction);
+    if (!heavyTech && !rebuildingHeavyTech && state.elapsed > aiProfile.heavyDelay + 70 && side.marshmallows >= costs.heavyTech.m && side.lollipops >= costs.heavyTech.l) {
+      side.marshmallows -= costs.heavyTech.m;
+      side.lollipops -= costs.heavyTech.l;
+      const tech = addStructure(owner, base.faction, "heavyTech", production.x - 95, production.y + 115);
+      tech.underConstruction = true;
+      tech.buildTime = buildTimes.heavyTech + 8;
+      tech.buildProgress = 0;
+      tech.buildStarted = true;
+      tech.hp = Math.max(1, Math.floor(tech.maxHp * 0.1));
+      if (owner === "enemy" && visibleToPlayer(tech)) say("Enemy Heavy Tech spotted.");
+    }
     const enemyArmy = state.units.filter((u) => u.owner === owner && u.type !== "worker");
     const armyCap = state.elapsed < 90 ? aiProfile.caps[0] : state.elapsed < 150 ? aiProfile.caps[1] : aiProfile.caps[2];
     if (side.marshmallows >= 75 && enemyArmy.length < armyCap) {
-      const type = state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
+      heavyTech = state.structures.find((s) => s.owner === owner && s.type === "heavyTech" && !s.underConstruction);
+      const canExtraHeavy = heavyTech && state.elapsed > aiProfile.heavyDelay + 120 && side.lollipops >= costs.extraHeavy.l && side.marshmallows >= costs.extraHeavy.m && Math.random() > 0.86;
+      const type = canExtraHeavy ? "extraHeavy" : state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
       if (side.lollipops >= costs[type].l && side.marshmallows >= costs[type].m) {
         side.lollipops -= costs[type].l;
         side.marshmallows -= costs[type].m;
-        const unit = addUnit(owner, production.faction, type, production.x - 60, production.y + (Math.random() - 0.5) * 90);
-        unit.tx = production.x - 120 + Math.random() * 70;
-        unit.ty = production.y - 90 + Math.random() * 180;
+        const producer = type === "extraHeavy" ? heavyTech : production;
+        const unit = addUnit(owner, producer.faction, type, producer.x - 60, producer.y + (Math.random() - 0.5) * 90);
+        unit.tx = producer.x - 120 + Math.random() * 70;
+        unit.ty = producer.y - 90 + Math.random() * 180;
       }
     }
 
@@ -2207,6 +2401,7 @@
   }
 
   function drawEntity(e) {
+    if (e.kind === "unit" && e.garrisonedIn) return;
     const s = stats[e.type];
     const f = factionData[e.faction];
     ctx.save();
@@ -2246,7 +2441,7 @@
     const sprite = unitSpriteCrop(e);
     if (unitSprites.complete && unitSprites.naturalWidth) {
       ctx.save();
-      const scale = e.type === "elite" ? 7.2 : e.type === "worker" ? 6.25 : e.type === "heavy" ? 6.9 : 6.6;
+      const scale = e.type === "extraHeavy" ? 7.8 : e.type === "elite" ? 7.2 : e.type === "worker" ? 6.25 : e.type === "heavy" ? 6.9 : 6.6;
       const drawW = s.radius * scale;
       const drawH = s.radius * scale;
       ctx.drawImage(unitSprites, sprite.x, sprite.y, sprite.w, sprite.h, -drawW / 2, -drawH / 2 - 18, drawW, drawH);
@@ -2294,11 +2489,23 @@
     ctx.beginPath();
     ctx.ellipse(0, 6, s.radius * 1.2, s.radius * 0.76, 0, 0, Math.PI * 2);
     ctx.stroke();
+    if (e.type === "defenseTower") {
+      ctx.fillStyle = e.garrisonedWorkerId ? f.accent : "rgba(255, 247, 232, 0.72)";
+      ctx.beginPath();
+      ctx.arc(0, -s.radius * 0.75, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = e.garrisonedWorkerId ? "#fff7c4" : "rgba(255, 255, 255, 0.7)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, -s.radius * 0.78);
+      ctx.lineTo(s.radius * 0.95, -s.radius * 1.16);
+      ctx.stroke();
+    }
   }
 
   function unitSpriteCrop(e) {
     const rows = { rainbow: 0, mech: 1, fire: 2 };
-    const cols = { worker: 0, soldier: 1, heavy: 2, elite: 3 };
+    const cols = { worker: 0, soldier: 1, heavy: 2, elite: 3, extraHeavy: 3 };
     const cell = 256;
     return {
       x: (cols[e.type] || 0) * cell,
@@ -2321,19 +2528,22 @@
         worker: { x: 0.08, y: 0.03, w: 0.18, h: 0.15 },
         soldier: { x: 0.36, y: 0.04, w: 0.15, h: 0.13 },
         heavy: { x: 0.55, y: 0.04, w: 0.16, h: 0.13 },
-        elite: { x: 0.55, y: 0.39, w: 0.20, h: 0.15 }
+        elite: { x: 0.55, y: 0.39, w: 0.20, h: 0.15 },
+        extraHeavy: { x: 0.55, y: 0.39, w: 0.20, h: 0.15 }
       },
       mech: {
         worker: { x: 0.07, y: 0.03, w: 0.17, h: 0.15 },
         soldier: { x: 0.34, y: 0.04, w: 0.15, h: 0.13 },
         heavy: { x: 0.50, y: 0.04, w: 0.16, h: 0.13 },
-        elite: { x: 0.45, y: 0.36, w: 0.20, h: 0.15 }
+        elite: { x: 0.45, y: 0.36, w: 0.20, h: 0.15 },
+        extraHeavy: { x: 0.45, y: 0.36, w: 0.20, h: 0.15 }
       },
       fire: {
         worker: { x: 0.07, y: 0.03, w: 0.17, h: 0.15 },
         soldier: { x: 0.34, y: 0.04, w: 0.14, h: 0.13 },
         heavy: { x: 0.06, y: 0.28, w: 0.16, h: 0.13 },
-        elite: { x: 0.46, y: 0.66, w: 0.20, h: 0.15 }
+        elite: { x: 0.46, y: 0.66, w: 0.20, h: 0.15 },
+        extraHeavy: { x: 0.46, y: 0.66, w: 0.20, h: 0.15 }
       }
     };
     const p = (positions[e.faction] && positions[e.faction][e.type]) || positions.rainbow.soldier;
@@ -2342,7 +2552,7 @@
 
   function buildingCrop(e) {
     const rows = { rainbow: 0, mech: 1, fire: 2 };
-    const cols = { base: 0, supply: 1, production: 2, extractor: 3, forge: 4 };
+    const cols = { base: 0, supply: 1, production: 2, extractor: 3, forge: 4, heavyTech: 2, defenseTower: 1 };
     const cellW = (buildingsPoster.naturalWidth || 1800) / 5;
     const cellH = (buildingsPoster.naturalHeight || 780) / 3;
     return {
@@ -2520,7 +2730,7 @@
     fctx.fillStyle = "rgba(5,12,10,0.64)";
     fctx.fillRect(0, 0, camera.w, camera.h);
     fctx.globalCompositeOperation = "destination-out";
-    [...state.units, ...state.structures].filter((e) => ownersAreAllied("player", e.owner)).forEach((e) => {
+    [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => ownersAreAllied("player", e.owner)).forEach((e) => {
       const r = e.type === "base" ? 520 : 330;
       fctx.beginPath();
       fctx.arc(e.x - camera.x, e.y - camera.y, r, 0, Math.PI * 2);
@@ -2567,8 +2777,9 @@
       mctx.fillRect(producer.x * sx - 3, producer.y * sy + 5, 6 * Math.min(1, job.elapsed / job.duration), 2);
     });
     [...state.structures, ...state.units].forEach((e) => {
+      if (e.kind === "unit" && e.garrisonedIn) return;
       if (!visibleToPlayer(e)) return;
-      mctx.fillStyle = ownerColor(e.owner);
+      mctx.fillStyle = minimapOwnerColor(e.owner);
       mctx.beginPath();
       mctx.arc(e.x * sx, e.y * sy, e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
       mctx.fill();
@@ -2597,10 +2808,11 @@
     const first = selectedCommandSubject(picked);
     const f = factionData[first.faction];
     const label = first.kind === "structure"
-      ? (first.type === "base" ? f.base : first.type === "production" ? "Barracks" : first.type === "extractor" ? "Lollipop Extractor" : first.type === "forge" ? "Forge" : "Wool Capacity")
+      ? (first.type === "base" ? f.base : first.type === "production" ? "Barracks" : first.type === "extractor" ? "Lollipop Extractor" : first.type === "forge" ? "Forge" : first.type === "heavyTech" ? f.heavyTech : first.type === "defenseTower" ? "Defence Tower" : "Wool Capacity")
       : unitLabel(first.type, first.faction);
     const hasBarracks = Boolean(readyStructure("production"));
     const hasForge = Boolean(readyStructure("forge"));
+    const hasHeavyTech = Boolean(readyStructure("heavyTech"));
     if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
       showCommandGroups(["unit", "basic-build", "advanced-build"]);
       ui.stop.disabled = false;
@@ -2609,8 +2821,10 @@
       ui.base.disabled = false;
       ui.supply.disabled = false;
       ui.production.disabled = false;
+      ui.defenseTower.disabled = false;
       ui.extractor.disabled = !hasBarracks;
       ui.forge.disabled = !hasBarracks;
+      ui.heavyTech.disabled = !hasBarracks;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "base") {
       showCommandGroups(["base"]);
       ui.worker.disabled = false;
@@ -2618,7 +2832,14 @@
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "production") {
       showCommandGroups(["barracks"]);
       ui.soldier.disabled = false;
+      ui.heavy.disabled = false;
       ui.elite.disabled = !hasForge;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "heavyTech") {
+      showCommandGroups(["heavy-tech"]);
+      ui.extraHeavy.disabled = false;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "defenseTower") {
+      showCommandGroups(["tower"]);
+      ui.unloadTower.disabled = !first.garrisonedWorkerId;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "forge") {
       showCommandGroups(["forge"]);
       ui.armor.disabled = upgrades.armor.researched || upgrades.armor.inProgress;
@@ -2641,8 +2862,16 @@
       ui.copy.textContent = "Main base selected. Train workers here.";
     } else if (first.kind === "structure" && first.type === "production") {
       ui.copy.textContent = hasForge
-        ? "Barracks selected. Train army units and elite units here."
-        : "Barracks selected. Build a Forge to unlock elite units.";
+        ? "Barracks selected. Train army units and elite units here. Build Heavy Tech for extra heavy ground units."
+        : "Barracks selected. Build a Forge to unlock elite units, or Heavy Tech for extra heavy ground units.";
+    } else if (first.kind === "structure" && first.type === "heavyTech") {
+      ui.copy.textContent = hasHeavyTech
+        ? f.heavyTech + " selected. Train extra heavy ground units here."
+        : f.heavyTech + " selected.";
+    } else if (first.kind === "structure" && first.type === "defenseTower") {
+      ui.copy.textContent = first.garrisonedWorkerId
+        ? "Defence Tower manned. The worker cannot move while firing the cannon."
+        : "Defence Tower empty. Select a worker and right-click this tower to man the cannon.";
     } else if (first.kind === "structure" && first.type === "forge") {
       ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else {
@@ -2665,6 +2894,7 @@
   function idleWorkerList() {
     return state.units.filter((unit) => {
       if (unit.owner !== "player" || unit.type !== "worker") return false;
+      if (unit.garrisonedIn || unit.garrisonTarget) return false;
       const moving = Math.hypot(unit.tx - unit.x, unit.ty - unit.y) > 8;
       return !moving && !unit.harvest && !unit.buildTask && !unit.target;
     });
@@ -2822,10 +3052,20 @@
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "soldier" });
     else queueTraining("soldier");
   });
+  ui.heavy.addEventListener("click", () => {
+    startMatchMusic();
+    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "heavy" });
+    else queueTraining("heavy");
+  });
   ui.elite.addEventListener("click", () => {
     startMatchMusic();
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "elite" });
     else queueTraining("elite");
+  });
+  ui.extraHeavy.addEventListener("click", () => {
+    startMatchMusic();
+    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "extraHeavy" });
+    else queueTraining("extraHeavy");
   });
   ui.stop.addEventListener("click", () => {
     startMatchMusic();
@@ -2857,6 +3097,10 @@
     startMatchMusic();
     buildProduction();
   });
+  ui.defenseTower.addEventListener("click", () => {
+    startMatchMusic();
+    buildDefenseTower();
+  });
   ui.extractor.addEventListener("click", () => {
     startMatchMusic();
     buildExtractor();
@@ -2864,6 +3108,10 @@
   ui.forge.addEventListener("click", () => {
     startMatchMusic();
     buildForge();
+  });
+  ui.heavyTech.addEventListener("click", () => {
+    startMatchMusic();
+    buildHeavyTech();
   });
   ui.armor.addEventListener("click", () => {
     startMatchMusic();
@@ -2876,6 +3124,13 @@
   ui.factionTech.addEventListener("click", () => {
     startMatchMusic();
     startUpgrade("factionTech");
+  });
+  ui.unloadTower.addEventListener("click", () => {
+    startMatchMusic();
+    const tower = state.structures.find((structure) => selected.has(structure.id) && structure.owner === "player" && structure.type === "defenseTower");
+    if (!tower) return say("Select a defence tower first.");
+    if (isNetworkGuest) sendNetworkCommand({ action: "unloadTower", towerId: tower.id });
+    else unloadTower("player", tower.id);
   });
   ui.ability.addEventListener("click", () => {
     startMatchMusic();
