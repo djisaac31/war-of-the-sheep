@@ -45,6 +45,7 @@
     heavy: document.querySelector("#train-heavy"),
     elite: document.querySelector("#train-elite"),
     extraHeavy: document.querySelector("#train-extra-heavy"),
+    move: document.querySelector("#unit-move"),
     stop: document.querySelector("#unit-stop"),
     hold: document.querySelector("#unit-hold"),
     patrol: document.querySelector("#unit-patrol"),
@@ -59,7 +60,8 @@
     eliteArmor: document.querySelector("#upgrade-elite-armor"),
     factionTech: document.querySelector("#upgrade-faction-tech"),
     unloadTower: document.querySelector("#unload-tower"),
-    ability: document.querySelector("#cast-ability")
+    ability: document.querySelector("#cast-ability"),
+    commandTooltip: document.querySelector("#command-tooltip")
   };
   const commandGroups = Array.from(document.querySelectorAll("[data-command-group]"));
   const commandButtons = Array.from(document.querySelectorAll("[data-command-button]"));
@@ -149,7 +151,7 @@
       extraHeavy: "Thunder Ram",
       heavyTech: "Machine Yard",
       base: "Candy Command Barn",
-      ability: "Repair Pulse",
+      ability: "Overclock",
       atlas: [0.35, 0.16, 0.31, 0.74],
       buildingAtlas: [0.35, 0.16, 0.30, 0.70]
     },
@@ -223,6 +225,7 @@
     factionTech: { label: "Faction Upgrade", type: "factionTech", time: 26, mode: "Research" }
   };
   const commandHelpText = {
+    move: "Move: tap the map to move, gather, repair, enter a tower, or attack a clicked target.",
     stop: "Stop: order selected units to halt.",
     hold: "Hold Position: selected units stand still and defend their range.",
     patrol: "Patrol: click a second point to patrol between two places.",
@@ -350,9 +353,19 @@
 
   function slotTeam(type, index) {
     if (type === "ffa") return "ffa-" + index;
-    if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
-    if (type === "3v3") return index < 3 ? "allies" : "rivals";
+    const teamSize = matchTeamSizes(type);
+    if (teamSize) return index < teamSize.allies ? "allies" : "rivals";
     return index === 0 ? "allies" : "rivals";
+  }
+
+  function matchTeamSizes(type) {
+    const match = String(type || "").match(/^(\d+)v(\d+)(?:-ai)?$/);
+    if (!match) return null;
+    return {
+      allies: Number(match[1]),
+      rivals: Number(match[2]),
+      total: Number(match[1]) + Number(match[2])
+    };
   }
 
   function roomPlayer(index) {
@@ -415,8 +428,13 @@
     return roomPlayersAllied(ownerPlayerIndex(a), ownerPlayerIndex(b));
   }
 
-  function isHostileTo(owner, entity) {
-    return entity && entity.owner && !ownersAreAllied(owner, entity.owner);
+  function isHostileTo(owner, entity, sourcePlayerIndex = null) {
+    if (!entity || !entity.owner) return false;
+    const attackerIndex = sourcePlayerIndex ?? ownerPlayerIndex(owner);
+    if (entity.playerIndex !== undefined && attackerIndex !== undefined && attackerIndex !== null) {
+      return !roomPlayersAllied(attackerIndex, entity.playerIndex);
+    }
+    return !ownersAreAllied(owner, entity.owner);
   }
 
   function readRoomSettings() {
@@ -646,12 +664,13 @@
     return network.enabled && !roomPlayersAllied(0, network.playerIndex);
   }
 
-  function addUnit(owner, faction, type, x, y) {
+  function addUnit(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
     const s = stats[type];
     const unit = {
       id: nextId++,
       kind: "unit",
       owner,
+      playerIndex,
       faction,
       type,
       x,
@@ -673,19 +692,21 @@
       garrisonedIn: null,
       selected: false,
       portraitSeed: Math.random(),
-      buildTask: null
+      buildTask: null,
+      repairTarget: null
     };
     state.units.push(unit);
     if (state.setupComplete && owner === "player") state.stats.unitsCreated += 1;
     return unit;
   }
 
-  function addStructure(owner, faction, type, x, y) {
+  function addStructure(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
     const s = stats[type];
     const structure = {
       id: nextId++,
       kind: "structure",
       owner,
+      playerIndex,
       faction,
       type,
       x,
@@ -707,6 +728,32 @@
 
   function addResource(type, x, y, amount) {
     state.resources.push({ id: nextId++, type, x, y, amount, radius: type === "lollipop" ? 42 : 48 });
+  }
+
+  function footprintRadius(type) {
+    const base = stats[type].radius;
+    if (type === "base") return base * 0.78;
+    if (type === "production" || type === "heavyTech") return base * 0.78;
+    if (type === "forge" || type === "extractor") return base * 0.75;
+    if (type === "supply" || type === "defenseTower") return base * 0.72;
+    return base;
+  }
+
+  function warmWoolRadius(structure) {
+    if (structure.type === "base") return 380;
+    if (structure.type === "supply") return 335;
+    return 235;
+  }
+
+  function attackTargetsFor(owner, sourcePlayerIndex = null) {
+    return [...state.units.filter((u) => !u.garrisonedIn), ...state.structures]
+      .filter((entity) => entity.hp > 0 && isHostileTo(owner, entity, sourcePlayerIndex));
+  }
+
+  function nearestAttackTarget(owner, x, y, range, sourcePlayerIndex = null) {
+    return attackTargetsFor(owner, sourcePlayerIndex)
+      .filter((entity) => Math.hypot(entity.x - x, entity.y - y) < range + stats[entity.type].radius)
+      .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || null;
   }
 
   function setup() {
@@ -749,8 +796,8 @@
     if (network.enabled && (roomSettings.players || []).length > 2) {
       spawnRoomSlots();
     } else {
-      spawnStartingFlock("player", pf, playerStart.x, playerStart.y, false, false);
-      spawnStartingFlock("enemy", ef, enemyStart.x, enemyStart.y, true, !network.enabled || tutorialMode);
+      spawnStartingFlock("player", pf, playerStart.x, playerStart.y, false, false, 0);
+      spawnStartingFlock("enemy", ef, enemyStart.x, enemyStart.y, true, !network.enabled || tutorialMode, 1);
       addResourceCluster(activeMap.playerGas[0] - 180, activeMap.playerGas[1] - 120);
       addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
       addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
@@ -784,7 +831,7 @@
       const owner = index === localIndex ? "player" : roomPlayersAllied(localIndex, index) ? "ally" : "enemy";
       const faction = factionKey(player.faction);
       const mirror = owner === "enemy";
-      spawnStartingFlock(owner, faction, start.x, start.y, mirror, Boolean(player.ai));
+      spawnStartingFlock(owner, faction, start.x, start.y, mirror, false, index);
       addResourceCluster(start.x + (mirror ? -260 : 100), start.y + 120);
       addResource("lollipop", start.x + (mirror ? -185 : 185), start.y - 130, 9999);
     });
@@ -810,21 +857,21 @@
     return fallback.slice(0, count);
   }
 
-  function spawnStartingFlock(owner, faction, x, y, mirror, withProduction) {
+  function spawnStartingFlock(owner, faction, x, y, mirror, withProduction, playerIndex = ownerPlayerIndex(owner)) {
     const side = sideFor(owner);
     side.woolMax += 12;
     const direction = mirror ? -1 : 1;
-    addStructure(owner, faction, "base", x, y);
-    addStructure(owner, faction, "supply", x - direction * 100, y - 140);
-    if (withProduction) addStructure(owner, faction, "production", x - direction * 80, y - 125);
-    addUnit(owner, faction, "worker", x + direction * 110, y - 30);
-    addUnit(owner, faction, "worker", x + direction * 60, y + 80);
-    addUnit(owner, faction, "worker", x + direction * 170, y + 70);
+    addStructure(owner, faction, "base", x, y, playerIndex);
+    addStructure(owner, faction, "supply", x - direction * 100, y - 140, playerIndex);
+    if (withProduction) addStructure(owner, faction, "production", x - direction * 80, y - 125, playerIndex);
+    addUnit(owner, faction, "worker", x + direction * 110, y - 30, playerIndex);
+    addUnit(owner, faction, "worker", x + direction * 60, y + 80, playerIndex);
+    addUnit(owner, faction, "worker", x + direction * 170, y + 70, playerIndex);
     side.woolUsed += 3;
   }
 
   function addResourceCluster(x, y) {
-    for (let i = 0; i < 8; i += 1) addResource("marshmallow", x + i * 45, y + (i % 2) * 52, 420);
+    for (let i = 0; i < 8; i += 1) addResource("marshmallow", x + i * 45, y + (i % 2) * 52, 1200);
   }
 
   function expansionSpots() {
@@ -832,12 +879,20 @@
     const enemyStart = { x: activeMap.enemy[0], y: activeMap.enemy[1] };
     const fromClearings = (activeMap.clearings || []).map((clearing) => ({ x: clearing[0], y: clearing[1] }));
     const fallback = [
+      { x: 520, y: 430 },
+      { x: 1880, y: 430 },
       { x: 1200, y: 430 },
+      { x: 440, y: 850 },
+      { x: 1960, y: 850 },
       { x: 1200, y: 1240 },
       { x: 790, y: 420 },
       { x: 1580, y: 1180 },
       { x: 770, y: 1210 },
-      { x: 1630, y: 500 }
+      { x: 1630, y: 500 },
+      { x: 520, y: 1320 },
+      { x: 1880, y: 1320 },
+      { x: 1080, y: 720 },
+      { x: 1320, y: 1010 }
     ];
     const candidates = [...fromClearings, ...fallback];
     const spots = [];
@@ -847,7 +902,7 @@
       const notDuplicate = !spots.some((existing) => Math.hypot(existing.x - spot.x, existing.y - spot.y) < 320);
       if (farFromPlayer && farFromEnemy && notDuplicate) spots.push(spot);
     });
-    return spots.slice(0, 4);
+    return spots.slice(0, 8);
   }
 
   function addExpansionResources() {
@@ -989,9 +1044,51 @@
     return label + "\nCost: " + costLine(config.type) + timeText;
   }
 
+  let commandTooltipEventsReady = false;
+
+  function positionCommandTooltip(button) {
+    if (!ui.commandTooltip || ui.commandTooltip.hidden) return;
+    const rect = button.getBoundingClientRect();
+    const margin = 10;
+    const width = ui.commandTooltip.offsetWidth || 260;
+    const height = ui.commandTooltip.offsetHeight || 86;
+    let left = rect.left + rect.width / 2 - width / 2;
+    left = Math.max(margin, Math.min(window.innerWidth - width - margin, left));
+    let top = rect.top - height - margin;
+    if (top < margin) top = rect.bottom + margin;
+    ui.commandTooltip.style.left = left + "px";
+    ui.commandTooltip.style.top = top + "px";
+  }
+
+  function showCommandTooltip(button) {
+    if (!ui.commandTooltip || button.hidden || !button.dataset.tooltip) return;
+    ui.commandTooltip.textContent = button.dataset.tooltip;
+    ui.commandTooltip.hidden = false;
+    positionCommandTooltip(button);
+  }
+
+  function hideCommandTooltip() {
+    if (ui.commandTooltip) ui.commandTooltip.hidden = true;
+  }
+
+  function wireCommandTooltipEvents() {
+    if (commandTooltipEventsReady) return;
+    commandTooltipEventsReady = true;
+    commandButtons.forEach((button) => {
+      button.addEventListener("mouseenter", () => showCommandTooltip(button));
+      button.addEventListener("focus", () => showCommandTooltip(button));
+      button.addEventListener("mousemove", () => positionCommandTooltip(button));
+      button.addEventListener("mouseleave", hideCommandTooltip);
+      button.addEventListener("blur", hideCommandTooltip);
+    });
+    window.addEventListener("scroll", hideCommandTooltip, true);
+    window.addEventListener("resize", hideCommandTooltip);
+  }
+
   function setButtonTooltip(button, text) {
     if (!button) return;
-    button.title = text;
+    button.removeAttribute("title");
+    button.dataset.tooltip = text;
     button.setAttribute("aria-label", text.replace(/\n/g, ". "));
   }
 
@@ -1014,10 +1111,12 @@
       ["factionTech", ui.factionTech]
     ].forEach(([key, button]) => setButtonTooltip(button, tooltipText(commandTooltipTypes[key])));
     setButtonTooltip(ui.stop, commandHelpText.stop);
+    setButtonTooltip(ui.move, commandHelpText.move);
     setButtonTooltip(ui.hold, commandHelpText.hold);
     setButtonTooltip(ui.patrol, commandHelpText.patrol);
     setButtonTooltip(ui.ability, commandHelpText.ability + "\nCurrent: " + factionData[state.player.faction].ability);
     setButtonTooltip(ui.unloadTower, commandHelpText.unloadTower);
+    wireCommandTooltipEvents();
   }
 
   function readyStructure(type, owner = "player") {
@@ -1046,6 +1145,7 @@
       faction: sideFor(owner).faction,
       type,
       producerId: producer.id,
+      playerIndex: producer.playerIndex,
       elapsed: 0,
       duration: trainTimes[type]
     });
@@ -1056,7 +1156,7 @@
     const producer = state.structures.find((s) => s.id === job.producerId);
     if (!producer) return;
     const angle = Math.random() * Math.PI * 2;
-    const unit = addUnit(job.owner, job.faction, job.type, producer.x + Math.cos(angle) * 95, producer.y + Math.sin(angle) * 95);
+    const unit = addUnit(job.owner, job.faction, job.type, producer.x + Math.cos(angle) * 95, producer.y + Math.sin(angle) * 95, job.playerIndex ?? producer.playerIndex);
     if (producer.rallyX !== undefined && producer.rallyY !== undefined) {
       unit.tx = producer.rallyX;
       unit.ty = producer.rallyY;
@@ -1151,16 +1251,19 @@
     const s = stats[type];
     if ((type === "extractor" || type === "forge" || type === "heavyTech") && !readyStructure("production", owner)) return false;
     if (type === "extractor") return Boolean(lollipopGeyserAt(x, y));
-    if (sideFor(owner).faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
+    const faction = sideFor(owner).faction;
+    if (faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
+    if (faction !== "fire" && isAnyWarmWool(x, y)) return false;
     if (x < s.radius || y < s.radius || x > world.w - s.radius || y > world.h - s.radius) return false;
-    if (type === "base" && state.structures.some((structure) => structure.type === "base" && Math.hypot(structure.x - x, structure.y - y) < 280)) return false;
+    if (!(faction === "fire" && type === "base") && type === "base" && state.structures.some((structure) => structure.type === "base" && Math.hypot(structure.x - x, structure.y - y) < 280)) return false;
     const blockers = [
       ...state.structures,
-      ...state.resources.filter((resource) => !(type === "base" && resource.type === "marshmallow"))
+      ...state.resources.filter((resource) => resource.amount > 0 && !(type === "base" && (resource.type === "marshmallow" || faction === "fire"))),
+      ...state.units.filter((unit) => type === "base" && isHostileTo(owner, unit))
     ];
     return !blockers.some((blocker) => {
-      const radius = blocker.radius || stats[blocker.type].radius;
-      return Math.hypot(blocker.x - x, blocker.y - y) < radius + s.radius + 18;
+      const radius = blocker.kind === "structure" ? footprintRadius(blocker.type) : blocker.radius || stats[blocker.type].radius;
+      return Math.hypot(blocker.x - x, blocker.y - y) < radius + footprintRadius(type) + 12;
     });
   }
 
@@ -1190,8 +1293,14 @@
   function isWarmWool(x, y, owner = "player") {
     return state.structures.some((structure) => {
       if (structure.owner !== owner || structure.faction !== "fire" || structure.underConstruction) return false;
-      const radius = structure.type === "base" ? 360 : 230;
-      return Math.hypot(structure.x - x, structure.y - y) <= radius;
+      return Math.hypot(structure.x - x, structure.y - y) <= warmWoolRadius(structure);
+    });
+  }
+
+  function isAnyWarmWool(x, y) {
+    return state.structures.some((structure) => {
+      if (structure.faction !== "fire" || structure.underConstruction) return false;
+      return Math.hypot(structure.x - x, structure.y - y) <= warmWoolRadius(structure);
     });
   }
 
@@ -1240,6 +1349,7 @@
     };
     worker.target = null;
     worker.harvest = null;
+    worker.repairTarget = null;
     worker.tx = buildX;
     worker.ty = buildY;
   }
@@ -1247,7 +1357,7 @@
   function startConstruction(worker) {
     if (!worker.buildTask || worker.buildTask.started) return;
     const task = worker.buildTask;
-    const structure = addStructure(worker.owner, sideFor(worker.owner).faction, task.type, task.x, task.y);
+    const structure = addStructure(worker.owner, sideFor(worker.owner).faction, task.type, task.x, task.y, worker.playerIndex);
     structure.resourceId = task.resourceId;
     structure.underConstruction = true;
     structure.buildTime = buildTimes[task.type];
@@ -1276,7 +1386,7 @@
   function constructionExitPoint(structure, worker) {
     const structureRadius = stats[structure.type].radius;
     const workerRadius = stats.worker.radius;
-    const distance = structureRadius + workerRadius + 34;
+    const distance = footprintRadius(structure.type) + workerRadius + 34;
     const angles = [-0.75, 0.75, -1.55, 1.55, Math.PI, 0, -2.35, 2.35];
     const originAngle = Math.atan2(worker.y - structure.y, worker.x - structure.x);
 
@@ -1284,9 +1394,9 @@
       const angle = originAngle + angles[i];
       const x = Math.max(40, Math.min(world.w - 40, structure.x + Math.cos(angle) * distance));
       const y = Math.max(40, Math.min(world.h - 40, structure.y + Math.sin(angle) * distance));
-      const blocked = [...state.structures, ...state.resources].some((entity) => {
+      const blocked = [...state.structures, ...state.resources.filter((resource) => resource.amount > 0)].some((entity) => {
         if (entity.id === structure.id) return false;
-        const radius = entity.radius || stats[entity.type].radius;
+        const radius = entity.kind === "structure" ? footprintRadius(entity.type) : entity.radius || stats[entity.type].radius;
         return Math.hypot(entity.x - x, entity.y - y) < radius + workerRadius + 12;
       });
       if (!blocked) return { x, y };
@@ -1445,11 +1555,12 @@
       burst(base.x, base.y, "#d8c4ff");
       if (owner === "player") say("Prism Burst shields the flock.");
     } else if (faction === "mech") {
-      [...state.units, ...state.structures].filter((e) => e.owner === owner).forEach((e) => {
-        e.hp = Math.min(e.maxHp, e.hp + 70);
+      state.units.filter((u) => u.owner === owner).forEach((u) => {
+        u.cooldown = 0;
+        u.speedBonus = Math.max(u.speedBonus || 1, 1.18);
       });
       burst(base.x, base.y, "#8dd5ef");
-      if (owner === "player") say("Repair Pulse restores machines and friends.");
+      if (owner === "player") say("Overclock speeds up Mech Sheep. Use workers to repair buildings.");
     } else {
       state.units.filter((u) => u.owner === owner).forEach((u) => {
         u.tx += owner === "player" ? 160 : -160;
@@ -1460,12 +1571,17 @@
     }
   }
 
+  function ownerForRoomPlayerIndex(playerIndex) {
+    if (playerIndex === localPlayerIndex()) return "player";
+    return roomPlayersAllied(localPlayerIndex(), playerIndex) ? "ally" : "enemy";
+  }
+
   function applyRemoteCommand(command, playerIndex = 1) {
-    const owner = roomPlayersAllied(0, playerIndex) ? "player" : "enemy";
+    const owner = ownerForRoomPlayerIndex(playerIndex);
     if (command.action === "command") {
-      applyUnitCommand(owner, command.unitIds || [], Number(command.x), Number(command.y));
+      applyUnitCommand(owner, command.unitIds || [], Number(command.x), Number(command.y), playerIndex);
     } else if (command.action === "attackMove") {
-      applyAttackMove(owner, command.unitIds || [], Number(command.x), Number(command.y));
+      applyAttackMove(owner, command.unitIds || [], Number(command.x), Number(command.y), playerIndex);
     } else if (command.action === "stop") {
       applyStop(owner, command.unitIds || []);
     } else if (command.action === "hold") {
@@ -1474,6 +1590,8 @@
       applyPatrol(owner, command.unitIds || [], Number(command.x), Number(command.y));
     } else if (command.action === "garrisonTower") {
       applyGarrisonTower(owner, command.unitIds || [], Number(command.towerId));
+    } else if (command.action === "repair") {
+      applyRepair(owner, command.unitIds || [], Number(command.targetId), playerIndex);
     } else if (command.action === "unloadTower") {
       unloadTower(owner, Number(command.towerId));
     } else if (command.action === "rally") {
@@ -1481,7 +1599,7 @@
     } else if (command.action === "train") {
       queueTraining(command.type, owner);
     } else if (command.action === "build") {
-      const worker = state.units.find((u) => u.id === command.workerId && u.owner === owner && u.type === "worker");
+      const worker = state.units.find((u) => u.id === command.workerId && u.owner === owner && u.type === "worker" && samePlayerSlot(u, playerIndex));
       if (!worker) return;
       const type = command.type;
       const x = Number(command.x);
@@ -1530,6 +1648,17 @@
     });
   }
 
+  function updateFireSelfRepair(dt) {
+    state.structures.forEach((structure) => {
+      if (structure.faction !== "fire" || structure.underConstruction || structure.hp <= 0 || structure.hp >= structure.maxHp) return;
+      const healRate = structure.type === "base" ? 7 : 5;
+      structure.hp = Math.min(structure.maxHp, structure.hp + healRate * dt);
+      if (Math.random() < 0.02) {
+        state.effects.push({ x: structure.x, y: structure.y - stats[structure.type].radius * 0.35, r: 4, life: 0.35, color: "#fff2cd", kind: "spark" });
+      }
+    });
+  }
+
   function selectableAt(wx, wy) {
     const all = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => e.owner === "player");
     for (let i = all.length - 1; i >= 0; i -= 1) {
@@ -1548,13 +1677,23 @@
     return null;
   }
 
-  function targetAt(wx, wy, owner = "player") {
-    const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(owner, e));
+  function targetAt(wx, wy, owner = "player", sourcePlayerIndex = null) {
+    const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(owner, e, sourcePlayerIndex));
     const resources = state.resources.filter((r) => r.amount > 0 && !r.coveredBy);
     const all = [...enemies, ...resources];
     for (let i = all.length - 1; i >= 0; i -= 1) {
       const r = all[i].radius || stats[all[i].type].radius;
       if (Math.hypot(all[i].x - wx, all[i].y - wy) < r + 12) return all[i];
+    }
+    return null;
+  }
+
+  function repairTargetAt(wx, wy, owner = "player") {
+    const buildings = state.structures.filter((structure) => {
+      return ownersAreAllied(owner, structure.owner) && structure.faction !== "fire" && structure.hp < structure.maxHp && !structure.underConstruction;
+    });
+    for (let i = buildings.length - 1; i >= 0; i -= 1) {
+      if (Math.hypot(buildings[i].x - wx, buildings[i].y - wy) < stats[buildings[i].type].radius + 14) return buildings[i];
     }
     return null;
   }
@@ -1582,6 +1721,14 @@
       say("Worker moving to man the defence tower.");
       return;
     }
+    const repairTarget = repairTargetAt(wx, wy, "player");
+    if (repairTarget && workers.length) {
+      if (isNetworkGuest) sendNetworkCommand({ action: "repair", unitIds: workers.map((u) => u.id), targetId: repairTarget.id });
+      else applyRepair("player", workers.map((u) => u.id), repairTarget.id);
+      state.effects.push({ x: repairTarget.x, y: repairTarget.y, r: 9, life: 0.9, color: "#8dd5ef", kind: "move" });
+      say("Worker moving to repair building.");
+      return;
+    }
     if (isNetworkGuest) {
       sendNetworkCommand({ action: "command", unitIds: units.map((u) => u.id), x: wx, y: wy });
       state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
@@ -1592,13 +1739,13 @@
     state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
   }
 
-  function applyUnitCommand(owner, unitIds, wx, wy) {
-    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && !u.garrisonedIn);
+  function applyUnitCommand(owner, unitIds, wx, wy, sourcePlayerIndex = null) {
+    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && samePlayerSlot(u, sourcePlayerIndex) && !u.garrisonedIn);
     if (!units.length) return;
-    const target = targetAt(wx, wy, owner);
+    const target = targetAt(wx, wy, owner, sourcePlayerIndex);
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
-      if (target && target.kind && isHostileTo(owner, target)) {
+      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex)) {
         unit.target = target.id;
         unit.garrisonTarget = null;
         unit.attackMove = false;
@@ -1607,6 +1754,7 @@
         unit.attackX = null;
         unit.attackY = null;
         unit.harvest = null;
+        unit.repairTarget = null;
         const stop = attackStopPoint(unit, target, index, units.length);
         unit.tx = stop.x;
         unit.ty = stop.y;
@@ -1619,11 +1767,13 @@
         unit.patrol = null;
         unit.attackX = null;
         unit.attackY = null;
+        unit.repairTarget = null;
         unit.tx = target.x + offset.x * 0.5;
         unit.ty = target.y + offset.y * 0.5;
       } else if (target && target.amount && target.type === "lollipop" && unit.type === "worker") {
         if (owner === "player") say("Build a Lollipop Extractor on this geyser to collect Lolligas.");
       } else {
+        const move = commandMovePoint(unit, wx, wy, offset);
         unit.target = null;
         unit.harvest = null;
         unit.garrisonTarget = null;
@@ -1632,8 +1782,9 @@
         unit.patrol = null;
         unit.attackX = null;
         unit.attackY = null;
-        unit.tx = wx + offset.x;
-        unit.ty = wy + offset.y;
+        unit.repairTarget = null;
+        unit.tx = move.x;
+        unit.ty = move.y;
       }
     });
   }
@@ -1695,6 +1846,7 @@
     state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner).forEach((unit) => {
       unit.target = null;
       unit.harvest = null;
+      unit.repairTarget = null;
       unit.attackMove = false;
       unit.attackX = null;
       unit.attackY = null;
@@ -1709,6 +1861,7 @@
     state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner).forEach((unit) => {
       unit.target = null;
       unit.harvest = null;
+      unit.repairTarget = null;
       unit.attackMove = false;
       unit.attackX = null;
       unit.attackY = null;
@@ -1725,6 +1878,7 @@
       const offset = formationOffset(index, units.length);
       unit.target = null;
       unit.harvest = null;
+      unit.repairTarget = null;
       unit.hold = false;
       unit.attackMove = true;
       unit.attackX = wx + offset.x;
@@ -1743,6 +1897,7 @@
     worker.target = null;
     worker.harvest = null;
     worker.buildTask = null;
+    worker.repairTarget = null;
     worker.attackMove = false;
     worker.patrol = null;
     worker.garrisonTarget = tower.id;
@@ -1761,6 +1916,7 @@
     worker.target = null;
     worker.harvest = null;
     worker.buildTask = null;
+    worker.repairTarget = null;
     selected.delete(worker.id);
     tower.garrisonedWorkerId = worker.id;
     if (worker.owner === "player") {
@@ -1796,27 +1952,51 @@
     });
   }
 
-  function applyAttackMove(owner, unitIds, wx, wy) {
-    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && u.kind !== "structure");
+  function applyRepair(owner, unitIds, targetId, sourcePlayerIndex = null) {
+    const target = state.structures.find((structure) => {
+      return structure.id === targetId && !isHostileTo(owner, structure, sourcePlayerIndex) && structure.faction !== "fire" && !structure.underConstruction && structure.hp < structure.maxHp;
+    });
+    if (!target) return;
+    state.units.filter((unit) => unitIds.includes(unit.id) && unit.owner === owner && samePlayerSlot(unit, sourcePlayerIndex) && unit.type === "worker" && !unit.garrisonedIn).forEach((unit, index, workers) => {
+      const stop = attackStopPoint(unit, target, index, workers.length);
+      unit.target = null;
+      unit.harvest = null;
+      unit.buildTask = null;
+      unit.garrisonTarget = null;
+      unit.attackMove = false;
+      unit.attackX = null;
+      unit.attackY = null;
+      unit.patrol = null;
+      unit.hold = false;
+      unit.repairTarget = target.id;
+      unit.tx = stop.x;
+      unit.ty = stop.y;
+    });
+  }
+
+  function applyAttackMove(owner, unitIds, wx, wy, sourcePlayerIndex = null) {
+    const units = state.units.filter((u) => unitIds.includes(u.id) && u.owner === owner && samePlayerSlot(u, sourcePlayerIndex) && u.kind !== "structure");
     if (!units.length) return;
-    const target = targetAt(wx, wy, owner);
+    const target = targetAt(wx, wy, owner, sourcePlayerIndex);
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
       unit.harvest = null;
+      unit.repairTarget = null;
       unit.hold = false;
       unit.patrol = null;
       unit.attackMove = true;
       unit.attackX = wx + offset.x;
       unit.attackY = wy + offset.y;
-      if (target && target.kind && isHostileTo(owner, target)) {
+      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex)) {
         unit.target = target.id;
         const stop = attackStopPoint(unit, target, index, units.length);
         unit.tx = stop.x;
         unit.ty = stop.y;
       } else {
+        const move = commandMovePoint(unit, wx, wy, offset);
         unit.target = null;
-        unit.tx = wx + offset.x;
-        unit.ty = wy + offset.y;
+        unit.tx = move.x;
+        unit.ty = move.y;
       }
     });
   }
@@ -1847,6 +2027,23 @@
     };
   }
 
+  function openMovePointFor(unit, x, y) {
+    const blocking = state.structures
+      .filter((structure) => !(structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25))
+      .find((structure) => Math.hypot(x - structure.x, y - structure.y) < footprintRadius(structure.type) + stats[unit.type].radius + 14);
+    if (!blocking) return { x, y };
+    const radius = footprintRadius(blocking.type) + stats[unit.type].radius + 24;
+    const angle = Math.atan2(y - blocking.y, x - blocking.x) || Math.atan2(unit.y - blocking.y, unit.x - blocking.x) || 0;
+    return {
+      x: Math.max(35, Math.min(world.w - 35, blocking.x + Math.cos(angle) * radius)),
+      y: Math.max(35, Math.min(world.h - 35, blocking.y + Math.sin(angle) * radius))
+    };
+  }
+
+  function commandMovePoint(unit, x, y, offset) {
+    return openMovePointFor(unit, x + offset.x, y + offset.y);
+  }
+
   function dropOffPoint(unit, base) {
     const baseRadius = stats[base.type].radius;
     const unitRadius = stats[unit.type].radius;
@@ -1858,16 +2055,20 @@
     };
   }
 
-  function nearestBase(owner, x, y) {
+  function samePlayerSlot(entity, playerIndex) {
+    return playerIndex === undefined || playerIndex === null || entity.playerIndex === undefined || entity.playerIndex === playerIndex;
+  }
+
+  function nearestBase(owner, x, y, playerIndex = null) {
     return state.structures
-      .filter((structure) => structure.owner === owner && structure.type === "base" && !structure.underConstruction)
+      .filter((structure) => structure.owner === owner && structure.type === "base" && !structure.underConstruction && samePlayerSlot(structure, playerIndex))
       .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || null;
   }
 
   function pushUnitOutOfBuildings(unit) {
     state.structures.forEach((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return;
-      const minDistance = stats[structure.type].radius + stats[unit.type].radius + 10;
+      const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + 10;
       const dx = unit.x - structure.x;
       const dy = unit.y - structure.y;
       const distance = Math.hypot(dx, dy);
@@ -1881,6 +2082,32 @@
         unit.ty = unit.y;
       }
     });
+  }
+
+  function movementBlockedAt(unit, x, y) {
+    return state.structures.some((structure) => {
+      if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return false;
+      const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + 12;
+      return Math.hypot(x - structure.x, y - structure.y) < minDistance;
+    });
+  }
+
+  function smartMoveStep(unit, dx, dy, distance, step) {
+    const directX = unit.x + (dx / distance) * step;
+    const directY = unit.y + (dy / distance) * step;
+    if (!movementBlockedAt(unit, directX, directY)) {
+      return { x: directX, y: directY };
+    }
+
+    const baseAngle = Math.atan2(dy, dx);
+    const options = [0.55, -0.55, 0.95, -0.95, 1.35, -1.35, Math.PI * 0.5, -Math.PI * 0.5];
+    for (const offset of options) {
+      const angle = baseAngle + offset;
+      const x = unit.x + Math.cos(angle) * step;
+      const y = unit.y + Math.sin(angle) * step;
+      if (!movementBlockedAt(unit, x, y)) return { x, y };
+    }
+    return { x: unit.x, y: unit.y };
   }
 
   function update(dt) {
@@ -1938,6 +2165,7 @@
     updateConstructions(dt);
     updateExtractors(dt);
     updateUpgrades(dt);
+    updateFireSelfRepair(dt);
     updateHitFlashes(dt);
     fight(dt);
     cleanup();
@@ -1969,6 +2197,7 @@
         unit.target = null;
         unit.harvest = null;
         unit.buildTask = null;
+        unit.repairTarget = null;
         unit.tx = tower.x;
         unit.ty = tower.y;
       }
@@ -1977,15 +2206,45 @@
       unit.target = null;
       unit.attackMove = false;
       unit.harvest = null;
+      unit.repairTarget = null;
       unit.tx = unit.buildTask.x;
       unit.ty = unit.buildTask.y;
       if (Math.hypot(unit.x - unit.buildTask.x, unit.y - unit.buildTask.y) < 38) {
         startConstruction(unit);
       }
     }
+    if (unit.repairTarget) {
+      const target = state.structures.find((structure) => {
+        return structure.id === unit.repairTarget && !isHostileTo(unit.owner, structure, unit.playerIndex) && structure.faction !== "fire" && !structure.underConstruction;
+      });
+      if (!target || target.hp >= target.maxHp) {
+        unit.repairTarget = null;
+      } else {
+        unit.target = null;
+        unit.harvest = null;
+        unit.attackMove = false;
+        const stop = attackStopPoint(unit, target);
+        unit.tx = stop.x;
+        unit.ty = stop.y;
+        if (dist(unit, target) < footprintRadius(target.type) + stats.worker.radius + 34) {
+          const side = sideFor(unit.owner);
+          const repairRate = 30;
+          const costRate = 0.22;
+          const affordable = Math.min(repairRate * dt, side.marshmallows / costRate, target.maxHp - target.hp);
+          if (affordable <= 0) {
+            if (unit.owner === "player") say("Need Marshmallows to repair.");
+            unit.repairTarget = null;
+          } else {
+            side.marshmallows -= affordable * costRate;
+            target.hp = Math.min(target.maxHp, target.hp + affordable);
+            if (Math.random() < 0.08) state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.5, r: 5, life: 0.28, color: "#8dd5ef", kind: "spark" });
+          }
+        }
+      }
+    }
     if (unit.harvest) {
       const resource = state.resources.find((r) => r.id === unit.harvest && r.amount > 0);
-      const base = resource ? nearestBase(unit.owner, resource.x, resource.y) : null;
+      const base = resource ? nearestBase(unit.owner, resource.x, resource.y, unit.playerIndex) : null;
       if (!resource || !base) {
         unit.harvest = null;
       } else if (unit.carry >= 10) {
@@ -2011,7 +2270,13 @@
 
     if (unit.target) {
       const target = [...state.units, ...state.structures].find((e) => e.id === unit.target);
-      if (target && unit.hold) {
+      if (target && !isHostileTo(unit.owner, target, unit.playerIndex)) {
+        unit.target = null;
+        if (unit.attackMove && unit.attackX !== null && unit.attackY !== null) {
+          unit.tx = unit.attackX;
+          unit.ty = unit.attackY;
+        }
+      } else if (target && unit.hold) {
         const s = stats[unit.type];
         if (Math.hypot(target.x - unit.x, target.y - unit.y) > s.range + stats[target.type].radius) unit.target = null;
       } else if (target) {
@@ -2035,8 +2300,9 @@
     const d = Math.hypot(dx, dy);
     if (speed && d > 4) {
       const step = Math.min(d, speed * dt);
-      unit.x += (dx / d) * step;
-      unit.y += (dy / d) * step;
+      const next = smartMoveStep(unit, dx, dy, d, step);
+      unit.x = next.x;
+      unit.y = next.y;
       unit.x = Math.max(30, Math.min(world.w - 30, unit.x));
       unit.y = Math.max(30, Math.min(world.h - 30, unit.y));
       pushUnitOutOfBuildings(unit);
@@ -2060,8 +2326,7 @@
       if (structure.type !== "defenseTower" || structure.underConstruction || !structure.garrisonedWorkerId) return;
       structure.cooldown = Math.max(0, (structure.cooldown || 0) - dt);
       const s = stats.defenseTower;
-      const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(structure.owner, e));
-      const target = enemies.find((e) => Math.hypot(e.x - structure.x, e.y - structure.y) < s.range + stats[e.type].radius);
+      const target = nearestAttackTarget(structure.owner, structure.x, structure.y, s.range, structure.playerIndex);
       if (!target || structure.cooldown > 0) return;
       structure.cooldown = s.cooldown;
       target.hp -= damageAfterArmor(s.damage, target);
@@ -2073,10 +2338,9 @@
       if (unit.garrisonedIn) return;
       const s = stats[unit.type];
       if (!s.damage) return;
-      const enemies = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => isHostileTo(unit.owner, e));
-      let target = unit.target ? enemies.find((e) => e.id === unit.target) : null;
+      let target = unit.target ? attackTargetsFor(unit.owner, unit.playerIndex).find((e) => e.id === unit.target) : null;
       if (!target) {
-        target = enemies.find((e) => Math.hypot(e.x - unit.x, e.y - unit.y) < s.range + stats[e.type].radius);
+        target = nearestAttackTarget(unit.owner, unit.x, unit.y, s.range, unit.playerIndex);
         if (target && unit.attackMove) unit.target = target.id;
       }
       if (!target) return;
@@ -2099,7 +2363,7 @@
 
   function applySplashDamage(unit, target, damage, radius) {
     [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].forEach((entity) => {
-      if (entity.id === target.id || !isHostileTo(unit.owner, entity)) return;
+      if (entity.id === target.id || !isHostileTo(unit.owner, entity, unit.playerIndex)) return;
       const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
       if (distance > radius + stats[entity.type].radius) return;
       entity.hp -= damageAfterArmor(damage, entity);
@@ -2151,7 +2415,7 @@
     });
     updateEffects();
 
-    const enemyBase = state.structures.find((s) => isHostileTo("player", s) && s.type === "base");
+    const enemyBase = state.structures.find((s) => isHostileTo("player", s, localPlayerIndex()) && s.type === "base");
     const playerBase = state.structures.find((s) => ownersAreAllied("player", s.owner) && s.type === "base");
     if (!enemyBase) endMatch("victory");
     if (!playerBase) endMatch("defeat");
@@ -2270,7 +2534,7 @@
       if (!rebuildingProduction && aiBuildTimer > 24 && side.marshmallows >= costs.production.m) {
         aiBuildTimer = 0;
         side.marshmallows -= costs.production.m;
-        const rebuilt = addStructure(owner, base.faction, "production", base.x - 95, base.y - 125);
+        const rebuilt = addStructure(owner, base.faction, "production", base.x - 95, base.y - 125, base.playerIndex);
         rebuilt.underConstruction = true;
         rebuilt.buildTime = buildTimes.production + 6;
         rebuilt.buildProgress = 0;
@@ -2285,7 +2549,7 @@
     if (!heavyTech && !rebuildingHeavyTech && state.elapsed > aiProfile.heavyDelay + 70 && side.marshmallows >= costs.heavyTech.m && side.lollipops >= costs.heavyTech.l) {
       side.marshmallows -= costs.heavyTech.m;
       side.lollipops -= costs.heavyTech.l;
-      const tech = addStructure(owner, base.faction, "heavyTech", production.x - 95, production.y + 115);
+      const tech = addStructure(owner, base.faction, "heavyTech", production.x - 95, production.y + 115, production.playerIndex ?? base.playerIndex);
       tech.underConstruction = true;
       tech.buildTime = buildTimes.heavyTech + 8;
       tech.buildProgress = 0;
@@ -2303,13 +2567,13 @@
         side.lollipops -= costs[type].l;
         side.marshmallows -= costs[type].m;
         const producer = type === "extraHeavy" ? heavyTech : production;
-        const unit = addUnit(owner, producer.faction, type, producer.x - 60, producer.y + (Math.random() - 0.5) * 90);
+        const unit = addUnit(owner, producer.faction, type, producer.x - 60, producer.y + (Math.random() - 0.5) * 90, producer.playerIndex ?? base.playerIndex);
         unit.tx = producer.x - 120 + Math.random() * 70;
         unit.ty = producer.y - 90 + Math.random() * 180;
       }
     }
 
-    const playerCrossedMap = state.units.some((u) => isHostileTo(owner, u) && Math.hypot(u.x - base.x, u.y - base.y) < 520);
+    const playerCrossedMap = state.units.some((u) => isHostileTo(owner, u, base.playerIndex) && Math.hypot(u.x - base.x, u.y - base.y) < 520);
     const defenseTarget = owner === "ally" ? urgentThreatNearAllies() : null;
     const waveReady = state.elapsed > aiProfile.waveDelay && attackWaveTimer > aiProfile.waveCooldown && enemyArmy.length >= 4;
     if (!defenseTarget && !playerCrossedMap && !waveReady) {
@@ -2332,7 +2596,7 @@
   }
 
   function nearestHostileBase(owner, from) {
-    const bases = state.structures.filter((s) => s.type === "base" && isHostileTo(owner, s));
+    const bases = state.structures.filter((s) => s.type === "base" && isHostileTo(owner, s, from && from.playerIndex));
     if (!from) return bases[0] || null;
     return bases.sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y))[0] || null;
   }
@@ -2344,7 +2608,7 @@
 
   function urgentThreatNearAllies() {
     const alliedBases = state.structures.filter((s) => ownersAreAllied("player", s.owner) && s.type === "base");
-    const threats = [...state.units, ...state.structures].filter((e) => isHostileTo("player", e));
+    const threats = [...state.units, ...state.structures].filter((e) => isHostileTo("player", e, localPlayerIndex()));
     for (const base of alliedBases) {
       const threat = threats.find((e) => Math.hypot(e.x - base.x, e.y - base.y) < 620);
       if (threat) return threat;
@@ -2354,6 +2618,7 @@
 
   function assignAiHarvesters(owner) {
     state.units.filter((u) => u.owner === owner && u.type === "worker" && !u.harvest && !u.buildTask).forEach((worker) => {
+      if (!nearestBase(owner, worker.x, worker.y, worker.playerIndex)) return;
       const resource = nearestResource(worker, "marshmallow");
       if (!resource) return;
       worker.harvest = resource.id;
@@ -2423,24 +2688,37 @@
   }
 
   function drawWarmWool() {
-    if (state.player.faction !== "fire") return;
+    const woolSources = state.structures.filter((structure) => {
+      return structure.faction === "fire" && !structure.underConstruction && visibleToPlayer(structure);
+    });
+    if (!woolSources.length) return;
     ctx.save();
-    state.structures.forEach((structure) => {
-      if (structure.owner !== "player" || structure.faction !== "fire" || structure.underConstruction) return;
-      const radius = structure.type === "base" ? 360 : 230;
-      const grad = ctx.createRadialGradient(structure.x, structure.y, 20, structure.x, structure.y, radius);
-      grad.addColorStop(0, "rgba(255, 132, 62, 0.24)");
-      grad.addColorStop(1, "rgba(255, 132, 62, 0)");
+    woolSources.forEach((structure) => {
+      const radius = warmWoolRadius(structure);
+      const grad = ctx.createRadialGradient(structure.x, structure.y, 10, structure.x, structure.y, radius);
+      grad.addColorStop(0, "rgba(255, 242, 205, 0.44)");
+      grad.addColorStop(0.58, "rgba(255, 226, 186, 0.28)");
+      grad.addColorStop(1, "rgba(255, 226, 186, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(structure.x, structure.y, radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255, 184, 84, 0.28)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([14, 10]);
-      ctx.beginPath();
-      ctx.arc(structure.x, structure.y, radius, 0, Math.PI * 2);
-      ctx.stroke();
+
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.fillStyle = structure.owner === "player" || ownersAreAllied("player", structure.owner)
+        ? "rgba(255, 249, 228, 0.76)"
+        : "rgba(255, 211, 184, 0.58)";
+      for (let i = 0; i < 18; i += 1) {
+        const angle = (Math.PI * 2 * i) / 18 + structure.portraitSeed;
+        const distFromCenter = radius * (0.22 + (i % 5) * 0.13);
+        const x = structure.x + Math.cos(angle) * distFromCenter;
+        const y = structure.y + Math.sin(angle) * distFromCenter * 0.72;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 34 + (i % 3) * 10, 18 + (i % 4) * 5, angle * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     });
     ctx.restore();
   }
@@ -2743,7 +3021,7 @@
     }
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.ellipse(0, 8, s.radius * 1.35, s.radius * 0.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 8, footprintRadius(placement.type) * 1.35, footprintRadius(placement.type) * 0.9, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -2888,6 +3166,7 @@
     const hasHeavyTech = Boolean(readyStructure("heavyTech"));
     if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
       showCommandGroups(["unit", "basic-build", "advanced-build"]);
+      ui.move.disabled = false;
       ui.stop.disabled = false;
       ui.hold.disabled = false;
       ui.patrol.disabled = false;
@@ -2920,6 +3199,7 @@
       ui.factionTech.disabled = upgrades.factionTech.researched || upgrades.factionTech.inProgress;
     } else if (!first.underConstruction && first.kind === "unit") {
       showCommandGroups(["unit"]);
+      ui.move.disabled = false;
       ui.stop.disabled = false;
       ui.hold.disabled = false;
       ui.patrol.disabled = false;
@@ -2997,6 +3277,10 @@
       issueCommand(p.wx, p.wy);
       return;
     }
+    if (event.button === 0 && commandMode === "move") {
+      issueCommand(p.wx, p.wy);
+      return;
+    }
     if (event.button === 0 && commandMode === "attack") {
       issueAttackMove(p.wx, p.wy);
       return;
@@ -3057,6 +3341,105 @@
     const y = ((event.clientY - rect.top) / rect.height) * world.h;
     camera.x = Math.max(0, Math.min(world.w - camera.w, x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, y - camera.h / 2));
+  });
+
+  function selectedPlayerUnits() {
+    return state.units.filter((u) => selected.has(u.id) && u.owner === "player");
+  }
+
+  function beginMoveCommand() {
+    const units = selectedPlayerUnits();
+    if (!units.length) {
+      say("Select units first, then tap Move.");
+      return;
+    }
+    commandMode = "move";
+    say("Move: tap a spot, resource, building, or enemy.");
+  }
+
+  const touchState = {
+    active: false,
+    id: null,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    moved: false,
+    startedAt: 0
+  };
+
+  function touchPoint(event) {
+    const touch = Array.from(event.changedTouches).find((item) => item.identifier === touchState.id) || event.changedTouches[0];
+    return touch ? screenToWorld(touch.clientX, touch.clientY) : null;
+  }
+
+  canvas.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    event.preventDefault();
+    startMatchMusic();
+    const touch = event.changedTouches[0];
+    const p = screenToWorld(touch.clientX, touch.clientY);
+    touchState.active = true;
+    touchState.id = touch.identifier;
+    touchState.startX = p.x;
+    touchState.startY = p.y;
+    touchState.lastX = p.x;
+    touchState.lastY = p.y;
+    touchState.moved = false;
+    touchState.startedAt = performance.now();
+    mouse.x = p.x;
+    mouse.y = p.y;
+    mouse.wx = p.wx;
+    mouse.wy = p.wy;
+    mouse.down = false;
+  }, { passive: false });
+
+  canvas.addEventListener("touchmove", (event) => {
+    if (!touchState.active) return;
+    event.preventDefault();
+    const p = touchPoint(event);
+    if (!p) return;
+    const dx = p.x - touchState.lastX;
+    const dy = p.y - touchState.lastY;
+    const total = Math.hypot(p.x - touchState.startX, p.y - touchState.startY);
+    if (total > 10) touchState.moved = true;
+    mouse.x = p.x;
+    mouse.y = p.y;
+    mouse.wx = p.wx;
+    mouse.wy = p.wy;
+    if (placement) {
+      placement.x = p.wx;
+      placement.y = p.wy;
+    } else if (touchState.moved && !commandMode) {
+      camera.x = Math.max(0, Math.min(world.w - camera.w, camera.x - dx));
+      camera.y = Math.max(0, Math.min(world.h - camera.h, camera.y - dy));
+    }
+    touchState.lastX = p.x;
+    touchState.lastY = p.y;
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", (event) => {
+    if (!touchState.active) return;
+    event.preventDefault();
+    const p = touchPoint(event);
+    touchState.active = false;
+    if (!p) return;
+    mouse.x = p.x;
+    mouse.y = p.y;
+    mouse.wx = p.wx;
+    mouse.wy = p.wy;
+    if (touchState.moved && !placement && !commandMode) return;
+    if (finishPlacement()) return;
+    if (commandMode === "move") return issueCommand(p.wx, p.wy);
+    if (commandMode === "attack") return issueAttackMove(p.wx, p.wy);
+    if (commandMode === "patrol") return issuePatrol(p.wx, p.wy);
+    selected.clear();
+    const hit = selectableAt(p.wx, p.wy);
+    if (hit) selected.add(hit.id);
+  }, { passive: false });
+
+  canvas.addEventListener("touchcancel", () => {
+    touchState.active = false;
   });
 
   window.addEventListener("keydown", (event) => {
@@ -3139,6 +3522,10 @@
     startMatchMusic();
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "extraHeavy" });
     else queueTraining("extraHeavy");
+  });
+  ui.move.addEventListener("click", () => {
+    startMatchMusic();
+    beginMoveCommand();
   });
   ui.stop.addEventListener("click", () => {
     startMatchMusic();

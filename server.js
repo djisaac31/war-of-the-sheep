@@ -96,9 +96,19 @@ function createPlayer(input, fallbackName) {
 
 function slotTeam(type, index) {
   if (type === "ffa") return "ffa-" + index;
-  if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
-  if (type === "3v3") return index < 3 ? "allies" : "rivals";
+  const teamSize = matchTeamSizes(type);
+  if (teamSize) return index < teamSize.allies ? "allies" : "rivals";
   return index === 0 ? "allies" : "rivals";
+}
+
+function matchTeamSizes(type) {
+  const match = String(type || "").match(/^(\d+)v(\d+)(?:-ai)?$/);
+  if (!match) return null;
+  return {
+    allies: Number(match[1]),
+    rivals: Number(match[2]),
+    total: Number(match[1]) + Number(match[2])
+  };
 }
 
 function cleanTeam(value, type, index) {

@@ -165,9 +165,20 @@
 
   function slotTeam(type, index) {
     if (type === "ffa") return "ffa-" + index;
-    if (type === "2v2" || type === "2v2-ai") return index < 2 ? "allies" : "rivals";
-    if (type === "3v3") return index < 3 ? "allies" : "rivals";
+    const teamSize = matchTeamSizes(type);
+    if (teamSize) return index < teamSize.allies ? "allies" : "rivals";
     return index === 0 ? "allies" : "rivals";
+  }
+
+  function matchTeamSizes(type) {
+    const match = String(type || "").match(/^(\d+)v(\d+)(?:-ai)?$/);
+    if (!match) return null;
+    return { allies: Number(match[1]), rivals: Number(match[2]), total: Number(match[1]) + Number(match[2]) };
+  }
+
+  function matchPlayerCount(type) {
+    const sizes = matchTeamSizes(type);
+    return sizes ? sizes.total : type === "ffa" ? Number(playerCount.value || 2) : 2;
   }
 
   function playerTeamLabel(room, player, index) {
@@ -428,8 +439,7 @@
   function matchLabel(type) {
     if (type === "ffa") return "FFA";
     if (type === "2v2-ai") return "2v2 vs AI";
-    if (type === "2v2") return "2v2";
-    if (type === "3v3") return "3v3";
+    if (matchTeamSizes(type)) return String(type).replace("-ai", " vs AI");
     return "1v1";
   }
 
@@ -540,11 +550,14 @@
     event.preventDefault();
 
     const formData = new FormData(hostForm);
-    const maxPlayers = Number(formData.get("playerCount"));
+    const chosenMatchType = String(formData.get("matchType") || "1v1");
+    const matchSize = matchTeamSizes(chosenMatchType);
+    const maxPlayers = matchSize ? matchSize.total : Number(formData.get("playerCount"));
     const chosenMap = String(formData.get("mapName") || "");
     if (selectedMapPlayers(chosenMap) !== maxPlayers) {
       status.textContent = "Choose a " + maxPlayers + "-player map for a " + maxPlayers + "-player room.";
       fillMapSelect(mapName, maxPlayers);
+      playerCount.value = String(maxPlayers);
       return;
     }
     if (serverOnline) {
@@ -554,11 +567,11 @@
           body: JSON.stringify({
             map: chosenMap,
             maxPlayers,
-            matchType: formData.get("matchType") || "1v1",
+            matchType: chosenMatchType,
             player: {
               name: formData.get("hostName") || "Host Shepherd",
               faction: getSelectedValue(hostForm, "hostFaction"),
-              team: slotTeam(formData.get("matchType") || "1v1", 0),
+              team: slotTeam(chosenMatchType, 0),
               ready: false
             }
           })
@@ -582,7 +595,7 @@
       code,
       map: chosenMap,
       maxPlayers,
-      matchType: formData.get("matchType") || "1v1",
+      matchType: chosenMatchType,
       training: false,
       difficulty: "human",
       createdAt: new Date().toISOString(),
@@ -590,7 +603,7 @@
         {
           name: formData.get("hostName") || "Host Shepherd",
           faction: getSelectedValue(hostForm, "hostFaction"),
-          team: slotTeam(formData.get("matchType") || "1v1", 0),
+          team: slotTeam(chosenMatchType, 0),
           ready: false,
           host: true
         }
@@ -611,22 +624,11 @@
   });
 
   matchType.addEventListener("change", function () {
-    if (matchType.value === "2v2") {
-      playerCount.value = "4";
-      fillMapSelect(mapName, 4);
-      status.textContent = "2v2 uses a 4-player map.";
-      return;
-    }
-    if (matchType.value === "3v3") {
-      playerCount.value = "6";
-      fillMapSelect(mapName, 6);
-      status.textContent = "3v3 uses a 6-player map.";
-      return;
-    }
-    if (matchType.value === "2v2-ai") {
-      playerCount.value = "4";
-      fillMapSelect(mapName, 4);
-      status.textContent = "2v2 vs AI uses a 4-player map.";
+    const neededPlayers = matchPlayerCount(matchType.value);
+    if (matchType.value !== "ffa") {
+      playerCount.value = String(neededPlayers);
+      fillMapSelect(mapName, neededPlayers);
+      status.textContent = matchLabel(matchType.value) + " uses a " + neededPlayers + "-player map.";
       return;
     }
     status.textContent = "Match type set to " + matchLabel(matchType.value) + ".";

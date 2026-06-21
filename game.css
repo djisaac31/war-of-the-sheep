@@ -30,6 +30,7 @@ body {
 
 button {
   font: inherit;
+  touch-action: manipulation;
 }
 
 .game-shell {
@@ -138,6 +139,9 @@ button {
   height: 100%;
   display: block;
   cursor: crosshair;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .toast {
@@ -384,6 +388,27 @@ button {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.command-tooltip {
+  position: fixed;
+  z-index: 30;
+  max-width: min(280px, calc(100vw - 24px));
+  pointer-events: none;
+  border: 1px solid rgba(242, 191, 77, 0.62);
+  border-radius: 6px;
+  background: rgba(8, 18, 15, 0.97);
+  color: #fff7e8;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.38);
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.35;
+  white-space: pre-line;
+}
+
+.command-tooltip[hidden] {
+  display: none;
+}
+
 .art-preload {
   display: none;
 }
@@ -480,36 +505,177 @@ button {
 
 @media (max-width: 680px) {
   body {
-    overflow: auto;
+    min-width: 320px;
+    overflow: hidden;
   }
 
   .game-shell {
-    min-height: 100vh;
-    height: auto;
+    height: 100dvh;
+    min-height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .topbar {
-    flex-wrap: wrap;
-    min-height: 56px;
-    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 0;
+    padding: 6px;
+  }
+
+  .brand {
+    font-size: 0.86rem;
   }
 
   .resource-bar {
-    order: 3;
-    flex-basis: 100%;
-    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    order: 4;
     justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .resource-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .resource,
+  .room-pill,
+  .music-button {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+  }
+
+  .room-pill,
+  #mission-toggle,
+  #alliance-toggle {
+    display: none;
   }
 
   .battlefield {
-    grid-template-rows: 58vh auto;
+    grid-template-rows: minmax(260px, 1fr) minmax(236px, 40dvh);
+    min-height: 0;
+  }
+
+  .toast {
+    left: 8px;
+    top: 8px;
+    max-width: calc(100% - 16px);
+    padding: 7px 9px;
+    font-size: 0.76rem;
+  }
+
+  .tutorial-missions,
+  .alliance-panel {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    width: auto;
+    max-height: calc(100% - 16px);
+    overflow: auto;
+  }
+
+  .mission-reopen {
+    right: 8px;
+    top: 8px;
+    min-height: 32px;
+    font-size: 0.78rem;
   }
 
   .command-deck {
-    grid-template-columns: 1fr;
+    grid-template-columns: 120px minmax(0, 1fr);
+    grid-template-rows: minmax(72px, auto) minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px;
+    overflow: hidden;
+  }
+
+  .minimap-panel {
+    grid-row: 1 / -1;
+    min-height: 0;
+    padding: 5px;
+  }
+
+  #minimap {
+    min-height: 0;
+  }
+
+  .selection-panel {
+    min-height: 72px;
+    padding: 8px;
+  }
+
+  .selection-panel h2 {
+    margin-bottom: 4px;
+    font-size: 0.92rem;
+  }
+
+  .selection-panel p {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.74rem;
+    line-height: 1.32;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .command-card {
-    grid-template-columns: repeat(4, minmax(68px, 1fr));
+    grid-template-columns: repeat(3, minmax(66px, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .command-group {
+    min-height: 15px;
+    font-size: 0.62rem;
+  }
+
+  .command-card button {
+    min-height: 46px;
+    font-size: 0.68rem;
+  }
+
+  .command-tooltip {
+    display: none;
+  }
+
+  .score-card {
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+    padding: 18px;
+  }
+
+  .score-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .score-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  #idle-worker-button {
+    grid-column: 1 / 2;
+  }
+
+  .command-deck {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .command-card {
+    grid-template-columns: repeat(2, minmax(64px, 1fr));
+  }
+
+  .resource,
+  .music-button {
+    font-size: 0.68rem;
   }
 }
