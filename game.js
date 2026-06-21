@@ -22,6 +22,7 @@
     allianceClose: document.querySelector("#alliance-close"),
     allianceList: document.querySelector("#alliance-list"),
     tutorial: document.querySelector("#tutorial-missions"),
+    tutorialKicker: document.querySelector(".tutorial-missions__kicker"),
     tutorialTitle: document.querySelector("#tutorial-title"),
     tutorialCopy: document.querySelector("#tutorial-copy"),
     tutorialList: document.querySelector("#tutorial-list"),
@@ -117,9 +118,12 @@
   }
   let roomSettings = readRoomSettings();
   const tutorialMode = params.get("tutorial") === "1" || Boolean(roomSettings.tutorial);
+  const storyMode = params.get("story") === "1" || Boolean(roomSettings.story);
   const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
   const aiDifficulty = String(roomSettings.difficulty || params.get("difficulty") || "normal").toLowerCase();
-  ui.room.textContent = tutorialMode
+  ui.room.textContent = storyMode
+    ? "Story Mission"
+    : tutorialMode
     ? "Tutorial Mission"
     : roomSettings.training ? "Training " + aiDifficulty.toUpperCase() + " - " + (roomSettings.map || "Candy Meadow")
     : network.enabled ? "Online Room " + roomCode + " - P" + (network.playerIndex + 1) : "Room " + roomCode;
@@ -169,6 +173,21 @@
       ability: "Warm Wool",
       atlas: [0.68, 0.16, 0.30, 0.74],
       buildingAtlas: [0.68, 0.16, 0.30, 0.70]
+    },
+    wolves: {
+      name: "Wolf Pack",
+      color: "#5c6470",
+      accent: "#d94b42",
+      worker: "Wolf Pup",
+      soldier: "Prowler Wolf",
+      heavy: "Fang Bruiser",
+      elite: "Howl Alpha",
+      extraHeavy: "Moonfang Beast",
+      heavyTech: "Moon Howl Lair",
+      base: "Wolf Den",
+      ability: "Howl",
+      atlas: [0.02, 0.16, 0.31, 0.74],
+      buildingAtlas: [0.02, 0.16, 0.30, 0.70]
     }
   };
 
@@ -239,6 +258,7 @@
   };
   const aiProfile = aiProfiles[aiDifficulty] || aiProfiles.normal;
   const mapProfiles = {
+    "Rainbow Meadow": { tint: "#79c78d", clearings: [[470, 780, 360, 210, -0.1], [1180, 500, 390, 220, 0.05], [1940, 900, 390, 220, 0.16], [1200, 1260, 360, 200, -0.08]], riverY: 1180, player: [360, 780], enemy: [2020, 900], playerGas: [790, 950], enemyGas: [1660, 980] },
     "Candy Meadow": { tint: "#6db978", clearings: [[760, 880, 360, 210, -0.2], [1710, 850, 390, 230, 0.15]], riverY: 1160, player: [330, 820], enemy: [2050, 780], playerGas: [780, 1000], enemyGas: [1640, 990] },
     "Marshmallow Crossing": { tint: "#79bfc9", clearings: [[650, 710, 330, 180, 0.05], [1570, 1020, 430, 210, -0.25]], riverY: 900, player: [310, 650], enemy: [2040, 1050], playerGas: [760, 805], enemyGas: [1650, 1120] },
     "Ember Orchard": { tint: "#9eb45c", clearings: [[690, 990, 330, 210, 0.15], [1670, 700, 400, 210, -0.15]], riverY: 1240, player: [330, 990], enemy: [2050, 650], playerGas: [805, 1110], enemyGas: [1635, 765] },
@@ -326,6 +346,37 @@
       }
     ]
   };
+  const story = {
+    step: 0,
+    announced: -1,
+    hidden: false,
+    missions: [
+      {
+        title: "Rainbow Meadow Calls",
+        copy: "The wolves have crossed into Rainbow Meadow. Select your Dreamer Lambs and start gathering Marshmallows for the rescue flock.",
+        task: "Gather 80 Marshmallows",
+        done: () => state.stats.marshmallowsGathered >= 80 || state.player.marshmallows >= 180
+      },
+      {
+        title: "Raise the Dream Forge",
+        copy: "Build a Barracks so Derek can call Gleamlings to defend the meadow paths.",
+        task: "Finish one Barracks",
+        done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "production" && !structure.underConstruction)
+      },
+      {
+        title: "Gather the Rescue Flock",
+        copy: "Train Rainbow Sheep fighters. The wolves are brave, but they do not understand sparkly teamwork.",
+        task: "Create 5 army units",
+        done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 5
+      },
+      {
+        title: "Break the Wolf Den",
+        copy: "Attack-move across Rainbow Meadow and destroy the Wolf Den to save the magic sheep.",
+        task: "Destroy the Wolf Den",
+        done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
+      }
+    ]
+  };
 
   function fitCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -346,6 +397,7 @@
   }
 
   function factionKey(faction) {
+    if (/wolf|wolves/i.test(faction)) return "wolves";
     if (/mech/i.test(faction)) return "mech";
     if (/fire/i.test(faction)) return "fire";
     return "rainbow";
@@ -762,7 +814,9 @@
     const opponentByFaction = { rainbow: "mech", mech: "rainbow", fire: "mech" };
     const opponentIndex = opponentPlayerIndex();
     const roomOpponent = roomSettings && roomSettings.players && roomSettings.players[opponentIndex] && roomSettings.players[opponentIndex].faction;
-    const ef = network.enabled
+    const ef = storyMode
+      ? "wolves"
+      : network.enabled
       ? (/mech/i.test(roomOpponent) ? "mech" : /fire/i.test(roomOpponent) ? "fire" : "rainbow")
       : opponentByFaction[pf] || "mech";
     state.enemy.faction = ef;
@@ -784,6 +838,15 @@
       state.enemy.woolUsed = 0;
       state.enemy.woolMax = 12;
     }
+    if (storyMode) {
+      state.player.faction = "rainbow";
+      state.player.marshmallows = 130;
+      state.player.lollipops = 25;
+      state.enemy.marshmallows = 80;
+      state.enemy.lollipops = 15;
+      state.enemy.woolUsed = 0;
+      state.enemy.woolMax = 18;
+    }
     state.player.woolUsed = 0;
     state.player.woolMax = 0;
     state.ally.woolUsed = 0;
@@ -793,7 +856,9 @@
     const playerStart = { x: activeMap.player[0], y: activeMap.player[1] };
     const enemyStart = { x: activeMap.enemy[0], y: activeMap.enemy[1] };
 
-    if (network.enabled && (roomSettings.players || []).length > 2) {
+    if (storyMode) {
+      spawnStoryMission(playerStart, enemyStart);
+    } else if (network.enabled && (roomSettings.players || []).length > 2) {
       spawnRoomSlots();
     } else {
       spawnStartingFlock("player", pf, playerStart.x, playerStart.y, false, false, 0);
@@ -812,14 +877,31 @@
     camera.x = Math.max(0, Math.min(world.w - camera.w, cameraStart.x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, cameraStart.y - camera.h / 2));
     state.setupComplete = true;
-    if (tutorialMode) {
+    if (tutorialMode || storyMode) {
       ui.tutorial.hidden = false;
       ui.missionToggle.hidden = false;
-      say("Tutorial mission started. Follow the objectives on the right.");
+      if (ui.tutorialKicker) ui.tutorialKicker.textContent = storyMode ? "Story Mission" : "Tutorial Mission";
+      say(storyMode ? "Story mission started. Save Rainbow Meadow from the wolves." : "Tutorial mission started. Follow the objectives on the right.");
       updateTutorial(true);
     } else {
       say("You are commanding " + factionData[pf].name + " on " + (roomSettings.map || "Candy Meadow") + ". Gather Marshmallows, then build a Lollipop Extractor.");
     }
+  }
+
+  function spawnStoryMission(playerStart, enemyStart) {
+    spawnStartingFlock("player", "rainbow", playerStart.x, playerStart.y, false, false, 0);
+    spawnStartingFlock("enemy", "wolves", enemyStart.x, enemyStart.y, true, true, 1);
+    addResourceCluster(activeMap.playerGas[0] - 160, activeMap.playerGas[1] - 120);
+    addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
+    addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
+    addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
+    [
+      [-120, -10, "soldier"],
+      [-90, 80, "soldier"],
+      [-170, 50, "heavy"]
+    ].forEach(([dx, dy, type]) => addUnit("enemy", "wolves", type, enemyStart.x + dx, enemyStart.y + dy, 1));
+    const rescue = addUnit("ally", "rainbow", "soldier", playerStart.x + 230, playerStart.y - 115, 0);
+    rescue.hold = true;
   }
 
   function spawnRoomSlots() {
@@ -919,31 +1001,33 @@
   }
 
   function updateTutorial(force = false) {
-    if (!tutorialMode || !ui.tutorial) return;
-    while (tutorial.step < tutorial.missions.length && tutorial.missions[tutorial.step].done()) {
-      tutorial.step += 1;
+    const tracker = storyMode ? story : tutorial;
+    if ((!tutorialMode && !storyMode) || !ui.tutorial) return;
+    while (tracker.step < tracker.missions.length && tracker.missions[tracker.step].done()) {
+      tracker.step += 1;
       force = true;
-      if (tutorial.step < tutorial.missions.length) say("Mission complete. Next objective: " + tutorial.missions[tutorial.step].title + ".");
-      else say("Tutorial complete. Destroy the base to finish the match.");
+      if (tracker.step < tracker.missions.length) say("Mission complete. Next objective: " + tracker.missions[tracker.step].title + ".");
+      else say(storyMode ? "Final objective complete. Finish the wolves and save Rainbow Meadow." : "Tutorial complete. Destroy the base to finish the match.");
     }
 
-    const mission = tutorial.missions[Math.min(tutorial.step, tutorial.missions.length - 1)];
-    if (!force && tutorial.announced === tutorial.step) return;
-    tutorial.announced = tutorial.step;
-    ui.tutorialTitle.textContent = tutorial.step >= tutorial.missions.length ? "Tutorial Complete" : mission.title;
-    ui.tutorialCopy.textContent = tutorial.step >= tutorial.missions.length ? "You know the basics. Finish the enemy base to win." : mission.copy;
+    const mission = tracker.missions[Math.min(tracker.step, tracker.missions.length - 1)];
+    if (!force && tracker.announced === tracker.step) return;
+    tracker.announced = tracker.step;
+    ui.tutorialTitle.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "Rainbow Meadow Saved" : "Tutorial Complete") : mission.title;
+    ui.tutorialCopy.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "The wolves are retreating. Destroy their last den to secure the meadow." : "You know the basics. Finish the enemy base to win.") : mission.copy;
     ui.tutorialList.innerHTML = "";
-    tutorial.missions.forEach((item, index) => {
+    tracker.missions.forEach((item, index) => {
       const li = document.createElement("li");
       li.textContent = item.task;
-      if (index < tutorial.step) li.className = "is-done";
+      if (index < tracker.step) li.className = "is-done";
       ui.tutorialList.append(li);
     });
   }
 
   function setMissionPanelHidden(hidden) {
-    if (!tutorialMode || !ui.tutorial) return;
-    tutorial.hidden = hidden;
+    const tracker = storyMode ? story : tutorial;
+    if ((!tutorialMode && !storyMode) || !ui.tutorial) return;
+    tracker.hidden = hidden;
     ui.tutorial.hidden = hidden;
     ui.missionToggle.textContent = hidden ? "Show Missions" : "Hide Missions";
     if (hidden) showMissionReopenButton();
@@ -2445,6 +2529,12 @@
     ui.scoreSummary.textContent = result === "victory"
       ? "You destroyed the enemy main base and claimed the meadow."
       : "Your main base was destroyed. The meadow is lost.";
+    if (storyMode) {
+      ui.scoreTitle.textContent = result === "victory" ? "Rainbow Meadow Saved" : "The Wolves Won";
+      ui.scoreSummary.textContent = result === "victory"
+        ? "Derek and the Rainbow Sheep broke the Wolf Den and saved the magic sheep."
+        : "The Wolf Pack overran the meadow. Rebuild the flock and try again.";
+    }
     ui.scoreTime.textContent = formatTime(state.elapsed);
     ui.scoreUnits.textContent = state.stats.unitsCreated;
     ui.scoreLost.textContent = state.stats.unitsLost;
@@ -2454,7 +2544,9 @@
     ui.scoreWorkers.textContent = state.units.filter((u) => u.owner === "player" && u.type === "worker").length;
     ui.scoreArmy.textContent = state.units.filter((u) => u.owner === "player" && u.type !== "worker").length;
     ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
-    if (tutorialMode) {
+    if (storyMode) {
+      ui.scoreRematch.textContent = result === "victory" ? "Play Story Again" : "Try Again";
+    } else if (tutorialMode) {
       const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
       if (result === "victory" && nextFaction) {
         ui.scoreTitle.textContent = "Tutorial Complete";
@@ -2788,24 +2880,28 @@
   }
 
   function drawUnitShape(e, f, s) {
-    const sprite = unitSpriteCrop(e);
-    if (unitSprites.complete && unitSprites.naturalWidth) {
-      ctx.save();
-      const scale = e.type === "extraHeavy" ? 7.8 : e.type === "elite" ? 7.2 : e.type === "worker" ? 6.25 : e.type === "heavy" ? 6.9 : 6.6;
-      const drawW = s.radius * scale;
-      const drawH = s.radius * scale;
-      ctx.drawImage(unitSprites, sprite.x, sprite.y, sprite.w, sprite.h, -drawW / 2, -drawH / 2 - 18, drawW, drawH);
-      ctx.restore();
-    } else if (poster.complete && poster.naturalWidth) {
-      const crop = atlasCrop(e);
-      ctx.save();
-      const drawW = s.radius * 4.65;
-      const drawH = s.radius * 5.15;
-      ctx.beginPath();
-      ctx.ellipse(0, -5, s.radius * 1.18, s.radius * 1.28, 0, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(poster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, -drawH * 0.66, drawW, drawH);
-      ctx.restore();
+    if (e.faction === "wolves") {
+      drawWolfUnitShape(e, s);
+    } else {
+      const sprite = unitSpriteCrop(e);
+      if (unitSprites.complete && unitSprites.naturalWidth) {
+        ctx.save();
+        const scale = e.type === "extraHeavy" ? 7.8 : e.type === "elite" ? 7.2 : e.type === "worker" ? 6.25 : e.type === "heavy" ? 6.9 : 6.6;
+        const drawW = s.radius * scale;
+        const drawH = s.radius * scale;
+        ctx.drawImage(unitSprites, sprite.x, sprite.y, sprite.w, sprite.h, -drawW / 2, -drawH / 2 - 18, drawW, drawH);
+        ctx.restore();
+      } else if (poster.complete && poster.naturalWidth) {
+        const crop = atlasCrop(e);
+        ctx.save();
+        const drawW = s.radius * 4.65;
+        const drawH = s.radius * 5.15;
+        ctx.beginPath();
+        ctx.ellipse(0, -5, s.radius * 1.18, s.radius * 1.28, 0, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(poster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, -drawH * 0.66, drawW, drawH);
+        ctx.restore();
+      }
     }
     ctx.strokeStyle = e.owner ? ownerColor(e.owner) : f.color;
     ctx.lineWidth = 4;
@@ -2820,19 +2916,70 @@
     }
   }
 
-  function drawStructureShape(e, f, s) {
-    const crop = buildingCrop(e);
-    const isBase = e.type === "base";
-    const drawW = s.radius * (isBase ? 3.45 : 2.35);
-    const drawH = s.radius * (isBase ? 3.0 : 1.95);
-    const drawY = isBase ? -drawH * 0.74 : -drawH * 0.62;
-    if (buildingsPoster.complete && buildingsPoster.naturalWidth) {
-      ctx.save();
+  function drawWolfUnitShape(e, s) {
+    const big = e.type === "heavy" || e.type === "elite" || e.type === "extraHeavy";
+    ctx.save();
+    ctx.fillStyle = big ? "#4c525c" : "#68707a";
+    ctx.strokeStyle = "#2d3036";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, -4, s.radius * 1.25, s.radius * 0.75, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(s.radius * 0.65, -s.radius * 0.42, s.radius * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#3c4148";
+    ctx.beginPath();
+    ctx.moveTo(s.radius * 0.36, -s.radius * 0.95);
+    ctx.lineTo(s.radius * 0.55, -s.radius * 1.58);
+    ctx.lineTo(s.radius * 0.78, -s.radius * 0.9);
+    ctx.moveTo(s.radius * 0.82, -s.radius * 0.92);
+    ctx.lineTo(s.radius * 1.08, -s.radius * 1.48);
+    ctx.lineTo(s.radius * 1.13, -s.radius * 0.68);
+    ctx.fill();
+    ctx.fillStyle = "#d94b42";
+    ctx.beginPath();
+    ctx.arc(s.radius * 0.8, -s.radius * 0.55, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#3c4148";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-s.radius * 0.95, -s.radius * 0.28);
+    ctx.quadraticCurveTo(-s.radius * 1.6, -s.radius * 0.92, -s.radius * 1.9, -s.radius * 0.28);
+    ctx.stroke();
+    ctx.fillStyle = "#2d3036";
+    [-0.5, 0.2, 0.72].forEach((x) => {
+      ctx.fillRect(x * s.radius, s.radius * 0.18, 5, s.radius * 0.78);
+    });
+    if (e.type === "elite" || e.type === "extraHeavy") {
+      ctx.strokeStyle = "#c9d0d8";
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.rect(-drawW / 2, drawY, drawW, drawH);
-      ctx.clip();
-      ctx.drawImage(buildingsPoster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, drawY, drawW, drawH);
-      ctx.restore();
+      ctx.arc(s.radius * 0.3, -s.radius * 0.72, s.radius * 0.68, Math.PI * 1.05, Math.PI * 1.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawStructureShape(e, f, s) {
+    if (e.faction === "wolves") {
+      drawWolfStructureShape(e, s);
+    } else {
+      const crop = buildingCrop(e);
+      const isBase = e.type === "base";
+      const drawW = s.radius * (isBase ? 3.45 : 2.35);
+      const drawH = s.radius * (isBase ? 3.0 : 1.95);
+      const drawY = isBase ? -drawH * 0.74 : -drawH * 0.62;
+      if (buildingsPoster.complete && buildingsPoster.naturalWidth) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-drawW / 2, drawY, drawW, drawH);
+        ctx.clip();
+        ctx.drawImage(buildingsPoster, crop.x, crop.y, crop.w, crop.h, -drawW / 2, drawY, drawW, drawH);
+        ctx.restore();
+      }
     }
     ctx.strokeStyle = e.owner ? ownerColor(e.owner) : "rgba(255, 255, 255, 0.8)";
     ctx.lineWidth = 5;
@@ -2851,6 +2998,36 @@
       ctx.lineTo(s.radius * 0.95, -s.radius * 1.16);
       ctx.stroke();
     }
+  }
+
+  function drawWolfStructureShape(e, s) {
+    const den = e.type === "base";
+    const w = s.radius * (den ? 2.55 : 1.8);
+    const h = s.radius * (den ? 1.45 : 1.08);
+    ctx.save();
+    ctx.fillStyle = den ? "#55565c" : "#4a4c52";
+    ctx.beginPath();
+    ctx.ellipse(0, -8, w * 0.62, h * 0.72, 0, Math.PI, Math.PI * 2);
+    ctx.lineTo(w * 0.54, 12);
+    ctx.quadraticCurveTo(0, h * 0.48, -w * 0.54, 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#1d1f24";
+    ctx.beginPath();
+    ctx.ellipse(0, 6, w * 0.25, h * 0.46, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#2d3036";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = "#d94b42";
+    ctx.lineWidth = 3;
+    for (let i = -1; i <= 1; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(i * 18 - 8, -h * 0.42);
+      ctx.lineTo(i * 18 + 8, -h * 0.12);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function unitSpriteCrop(e) {
@@ -3619,7 +3796,7 @@
     }
   });
   ui.missionToggle.addEventListener("click", () => {
-    setMissionPanelHidden(!tutorial.hidden);
+    setMissionPanelHidden(!(storyMode ? story : tutorial).hidden);
   });
   if (ui.allianceToggle) {
     ui.allianceToggle.addEventListener("click", () => {

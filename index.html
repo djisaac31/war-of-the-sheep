@@ -71,6 +71,10 @@
               <span>Tutorial</span>
               <small>Learn the RTS basics.</small>
             </button>
+            <button class="mode-button" id="mode-story" type="button" data-panel="story-panel" role="tab" aria-selected="false">
+              <span>Story</span>
+              <small>Save Rainbow Meadow.</small>
+            </button>
           </div>
         </div>
 
@@ -292,6 +296,43 @@
           <div class="tutorial-actions">
             <button class="button button--secondary" id="tutorial-train" type="button">Start Tutorial Mission</button>
             <button class="button button--primary" id="tutorial-host" type="button">Host a Match</button>
+          </div>
+        </div>
+
+        <div class="panel panel--flow is-hidden" id="story-panel" role="tabpanel" aria-labelledby="mode-story" hidden>
+          <div class="panel__heading">
+            <p class="eyebrow">Single Player Story</p>
+            <h2>Wolves of Rainbow Meadow</h2>
+          </div>
+
+          <div class="tutorial-guide">
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">1</span>
+              <div>
+                <h3>Rainbow Meadow Is In Trouble</h3>
+                <p>A sneaky wolf pack has built dens beyond the candy fields and is chasing the magic sheep from their home.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">2</span>
+              <div>
+                <h3>Build the Rescue Flock</h3>
+                <p>Gather Marshmallows, build a Barracks, and train Rainbow Sheep defenders before the wolves push in.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step tutorial-step--factions">
+              <span class="tutorial-step__number">★</span>
+              <div>
+                <h3>Win the Meadow Back</h3>
+                <p>Destroy the Wolf Den to save Rainbow Meadow and prove Derek's dream magic is stronger than wolf mischief.</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="tutorial-actions">
+            <button class="button button--start" id="story-start" type="button">Start Story Mission</button>
           </div>
         </div>
 

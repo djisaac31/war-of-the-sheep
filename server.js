@@ -87,7 +87,7 @@ function createPlayer(input, fallbackName) {
   return {
     id: crypto.randomUUID(),
     name: String(input.name || fallbackName).slice(0, 18),
-    faction: String(input.faction || "Rainbow Sheep"),
+    faction: cleanFaction(input.faction),
     team: String(input.team || "allies"),
     ai: Boolean(input.ai),
     ready: Boolean(input.ready || input.ai)
@@ -272,7 +272,7 @@ async function handleApi(req, res, url) {
     const factionCycle = ["Mech Sheep", "Fire Sheep", "Rainbow Sheep"];
     room.players.push(createPlayer({
       name: "AI Shepherd " + room.players.length,
-      faction: factionCycle[room.players.length % factionCycle.length],
+      faction: cleanFaction(body.faction || factionCycle[room.players.length % factionCycle.length]),
       team: String(body.team || slotTeam(room.matchType || "1v1", room.players.length)),
       ai: true,
       ready: true

@@ -24,6 +24,7 @@
   const matchType = document.querySelector("#match-type");
   const tutorialTrain = document.querySelector("#tutorial-train");
   const tutorialHost = document.querySelector("#tutorial-host");
+  const storyStart = document.querySelector("#story-start");
 
   let activeRoom = null;
   let serverOnline = false;
@@ -500,7 +501,42 @@
       if (button.dataset.panel === "host-panel") status.textContent = activeRoom ? "Share the room code when ready." : "Create a room code for your friend.";
       if (button.dataset.panel === "train-panel") status.textContent = "Pick an AI difficulty and map.";
       if (button.dataset.panel === "tutorial-panel") status.textContent = "Learn the first build order, then practice against AI.";
+      if (button.dataset.panel === "story-panel") status.textContent = "Play the single player story mission in Rainbow Meadow.";
     });
+  });
+
+  storyStart.addEventListener("click", function () {
+    const code = makeRoomCode();
+    const room = {
+      code,
+      map: "Rainbow Meadow",
+      maxPlayers: 2,
+      training: true,
+      story: true,
+      difficulty: "normal",
+      createdAt: new Date().toISOString(),
+      players: [
+        {
+          name: "Derek the Dreamer",
+          faction: "Rainbow Sheep",
+          ready: true,
+          host: true
+        },
+        {
+          name: "Wolf Pack",
+          faction: "Wolves",
+          ready: true,
+          host: false,
+          ai: true
+        }
+      ]
+    };
+
+    saveRoom(room);
+    renderRoom(room);
+    window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
+    status.textContent = "Story mission ready. Save Rainbow Meadow.";
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1";
   });
 
   tutorialTrain.addEventListener("click", function () {
