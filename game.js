@@ -205,6 +205,30 @@
 
   const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, extraHeavy: 34 };
   const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28 };
+  const commandTooltipTypes = {
+    worker: { label: "Train Worker", type: "worker", time: trainTimes.worker, mode: "Train" },
+    soldier: { label: "Train Army", type: "soldier", time: trainTimes.soldier, mode: "Train" },
+    heavy: { label: "Train Heavy", type: "heavy", time: trainTimes.heavy, mode: "Train" },
+    elite: { label: "Train Elite", type: "elite", time: trainTimes.elite, mode: "Train" },
+    extraHeavy: { label: "Train Extra Heavy", type: "extraHeavy", time: trainTimes.extraHeavy, mode: "Train" },
+    base: { label: "Build Base", type: "base", time: buildTimes.base, mode: "Build" },
+    supply: { label: "Build Supply", type: "supply", time: buildTimes.supply, mode: "Build" },
+    production: { label: "Build Barracks", type: "production", time: buildTimes.production, mode: "Build" },
+    defenseTower: { label: "Build Defence Tower", type: "defenseTower", time: buildTimes.defenseTower, mode: "Build" },
+    extractor: { label: "Build Extractor", type: "extractor", time: buildTimes.extractor, mode: "Build" },
+    forge: { label: "Build Forge", type: "forge", time: buildTimes.forge, mode: "Build" },
+    heavyTech: { label: "Build Heavy Tech", type: "heavyTech", time: buildTimes.heavyTech, mode: "Build" },
+    armor: { label: "Upgrade Armor", type: "armor", time: 22, mode: "Research" },
+    eliteArmor: { label: "Elite Armor", type: "eliteArmor", time: 30, mode: "Research" },
+    factionTech: { label: "Faction Upgrade", type: "factionTech", time: 26, mode: "Research" }
+  };
+  const commandHelpText = {
+    stop: "Stop: order selected units to halt.",
+    hold: "Hold Position: selected units stand still and defend their range.",
+    patrol: "Patrol: click a second point to patrol between two places.",
+    ability: "Faction Ability: use your faction power from the main base.",
+    unloadTower: "Unload Worker: remove the worker from this Defence Tower."
+  };
   const aiProfiles = {
     easy: { think: 20, drip: 0.45, burst: 14, gasDelay: 155, gas: 2, caps: [1, 3, 5], waveDelay: 190, waveCooldown: 78, waveSize: 4, heavyDelay: 205, heavyChance: 0.88 },
     normal: { think: 16, drip: 0.8, burst: 22, gasDelay: 120, gas: 3, caps: [2, 4, 7], waveDelay: 165, waveCooldown: 64, waveSize: 5, heavyDelay: 175, heavyChance: 0.8 },
@@ -946,6 +970,54 @@
     commandButtons.forEach((button) => {
       button.hidden = !groups.includes(button.dataset.commandButton);
     });
+  }
+
+  function costLine(type) {
+    const c = costs[type] || { m: 0, l: 0 };
+    const parts = [];
+    if (c.m) parts.push(c.m + " Marshmallows");
+    if (c.l) parts.push(c.l + " Lolligas");
+    if (stats[type] && stats[type].wool) parts.push(stats[type].wool + " Wool");
+    return parts.length ? parts.join(", ") : "No resource cost";
+  }
+
+  function tooltipText(config) {
+    const label = config.type === "soldier" || config.type === "heavy" || config.type === "elite" || config.type === "extraHeavy" || config.type === "worker"
+      ? config.label + " (" + unitLabel(config.type, state.player.faction) + ")"
+      : config.label;
+    const timeText = config.time ? "\nTime: " + config.time + "s" : "";
+    return label + "\nCost: " + costLine(config.type) + timeText;
+  }
+
+  function setButtonTooltip(button, text) {
+    if (!button) return;
+    button.title = text;
+    button.setAttribute("aria-label", text.replace(/\n/g, ". "));
+  }
+
+  function updateCommandTooltips() {
+    [
+      ["worker", ui.worker],
+      ["soldier", ui.soldier],
+      ["heavy", ui.heavy],
+      ["elite", ui.elite],
+      ["extraHeavy", ui.extraHeavy],
+      ["base", ui.base],
+      ["supply", ui.supply],
+      ["production", ui.production],
+      ["defenseTower", ui.defenseTower],
+      ["extractor", ui.extractor],
+      ["forge", ui.forge],
+      ["heavyTech", ui.heavyTech],
+      ["armor", ui.armor],
+      ["eliteArmor", ui.eliteArmor],
+      ["factionTech", ui.factionTech]
+    ].forEach(([key, button]) => setButtonTooltip(button, tooltipText(commandTooltipTypes[key])));
+    setButtonTooltip(ui.stop, commandHelpText.stop);
+    setButtonTooltip(ui.hold, commandHelpText.hold);
+    setButtonTooltip(ui.patrol, commandHelpText.patrol);
+    setButtonTooltip(ui.ability, commandHelpText.ability + "\nCurrent: " + factionData[state.player.faction].ability);
+    setButtonTooltip(ui.unloadTower, commandHelpText.unloadTower);
   }
 
   function readyStructure(type, owner = "player") {
@@ -2790,6 +2862,7 @@
   }
 
   function updateUi() {
+    updateCommandTooltips();
     ui.lollipops.textContent = Math.floor(state.player.lollipops);
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
     ui.wool.textContent = state.player.woolUsed + " / " + state.player.woolMax;
