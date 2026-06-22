@@ -21,6 +21,11 @@
     alliancePanel: document.querySelector("#alliance-panel"),
     allianceClose: document.querySelector("#alliance-close"),
     allianceList: document.querySelector("#alliance-list"),
+    storyCutscene: document.querySelector("#story-cutscene"),
+    storyCutsceneKicker: document.querySelector("#story-cutscene-kicker"),
+    storyCutsceneTitle: document.querySelector("#story-cutscene-title"),
+    storyCutsceneCopy: document.querySelector("#story-cutscene-copy"),
+    storyCutsceneNext: document.querySelector("#story-cutscene-next"),
     tutorial: document.querySelector("#tutorial-missions"),
     tutorialKicker: document.querySelector(".tutorial-missions__kicker"),
     tutorialTitle: document.querySelector("#tutorial-title"),
@@ -350,29 +355,42 @@
     step: 0,
     announced: -1,
     hidden: false,
+    cutscene: false,
+    cutscenesSeen: new Set(),
+    rescuedTuft: false,
+    gateHeld: false,
+    counterWaveSent: false,
+    finalWaveSent: false,
+    elderJoined: false,
     missions: [
       {
-        title: "Rainbow Meadow Calls",
-        copy: "The wolves have crossed into Rainbow Meadow. Select your Dreamer Lambs and start gathering Marshmallows for the rescue flock.",
-        task: "Gather 80 Marshmallows",
-        done: () => state.stats.marshmallowsGathered >= 80 || state.player.marshmallows >= 180
+        title: "Hold the Rainbow Gate",
+        copy: "Derek, Fiddler Fern, and Whisp are already defending the old Rainbow Gate. Hold the line until the first wolf rush breaks.",
+        task: "Survive the opening wolf attack",
+        done: () => story.gateHeld
       },
       {
-        title: "Raise the Dream Forge",
-        copy: "Build a Barracks so Derek can call Gleamlings to defend the meadow paths.",
-        task: "Finish one Barracks",
-        done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "production" && !structure.underConstruction)
+        title: "Rescue Little Tuft",
+        copy: "A tiny lamb is hiding by the candy grove. Move a hero or fighter to Little Tuft so the flock can guide them home.",
+        task: "Reach Little Tuft at the candy grove",
+        done: () => story.rescuedTuft
       },
       {
-        title: "Gather the Rescue Flock",
-        copy: "Train Rainbow Sheep fighters. The wolves are brave, but they do not understand sparkly teamwork.",
-        task: "Create 5 army units",
-        done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 5
+        title: "Rebuild the Rescue Flock",
+        copy: "The gate is safe for now. Gather Marshmallows, train fighters, and get ready to push past the meadow road.",
+        task: "Control 10 Rainbow combat sheep",
+        done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 10
       },
       {
-        title: "Break the Wolf Den",
-        copy: "Attack-move across Rainbow Meadow and destroy the Wolf Den to save the magic sheep.",
-        task: "Destroy the Wolf Den",
+        title: "Break the Forward Den",
+        copy: "The wolves built a forward den near the center path. Destroy it to open the way to Rainbow Meadow.",
+        task: "Destroy the forward Wolf Den",
+        done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "forwardDen")
+      },
+      {
+        title: "Save Rainbow Meadow",
+        copy: "Old Bluebell has shown the way to the final Wolf Den. Gather the heroes, attack-move together, and end the invasion.",
+        task: "Destroy every Wolf Den",
         done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
       }
     ]
@@ -745,11 +763,28 @@
       selected: false,
       portraitSeed: Math.random(),
       buildTask: null,
-      repairTarget: null
+      repairTarget: null,
+      heroName: null,
+      storySpecial: null,
+      damageBonus: 0,
+      rangeBonus: 0
     };
     state.units.push(unit);
     if (state.setupComplete && owner === "player") state.stats.unitsCreated += 1;
     return unit;
+  }
+
+  function addHero(owner, name, type, x, y, options = {}) {
+    const hero = addUnit(owner, "rainbow", type, x, y, 0);
+    hero.heroName = name;
+    hero.storySpecial = options.special || "Hero";
+    hero.maxHp = Math.round(hero.maxHp * (options.hpMultiplier || 1.65));
+    hero.hp = hero.maxHp;
+    hero.damageBonus = options.damageBonus || 0;
+    hero.rangeBonus = options.rangeBonus || 0;
+    hero.speedBonus = options.speedBonus || 1;
+    hero.hold = Boolean(options.hold);
+    return hero;
   }
 
   function addStructure(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
@@ -871,7 +906,9 @@
     addExpansionResources();
 
     const starts = startPositionsForPlayers((roomSettings.players || []).length || 2);
-    const cameraStart = network.enabled && starts[network.playerIndex]
+    const cameraStart = storyMode
+      ? { x: 560, y: 720 }
+      : network.enabled && starts[network.playerIndex]
       ? starts[network.playerIndex]
       : shouldSwapPerspective() ? enemyStart : playerStart;
     camera.x = Math.max(0, Math.min(world.w - camera.w, cameraStart.x - camera.w / 2));
@@ -889,19 +926,94 @@
   }
 
   function spawnStoryMission(playerStart, enemyStart) {
-    spawnStartingFlock("player", "rainbow", playerStart.x, playerStart.y, false, false, 0);
-    spawnStartingFlock("enemy", "wolves", enemyStart.x, enemyStart.y, true, true, 1);
-    addResourceCluster(activeMap.playerGas[0] - 160, activeMap.playerGas[1] - 120);
-    addResourceCluster(activeMap.enemyGas[0] + 35, activeMap.enemyGas[1] - 120);
-    addResource("lollipop", activeMap.playerGas[0], activeMap.playerGas[1], 9999);
-    addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
+    const gate = { x: 560, y: 720 };
+    const grove = { x: 980, y: 500 };
+    const forwardDen = { x: 1480, y: 760 };
+    const finalDen = { x: 2050, y: 990 };
+
+    state.player.marshmallows = 240;
+    state.player.lollipops = 55;
+    state.player.woolMax += 28;
+
+    addStructure("player", "rainbow", "base", gate.x - 145, gate.y + 70, 0);
+    addStructure("player", "rainbow", "supply", gate.x - 245, gate.y - 95, 0);
+    addStructure("player", "rainbow", "production", gate.x + 10, gate.y + 155, 0);
+    const northTower = addStructure("player", "rainbow", "defenseTower", gate.x + 155, gate.y - 80, 0);
+    const southTower = addStructure("player", "rainbow", "defenseTower", gate.x + 180, gate.y + 75, 0);
+    northTower.storyTag = "rainbowGate";
+    southTower.storyTag = "rainbowGate";
+
+    addUnit("player", "rainbow", "worker", gate.x - 15, gate.y + 45, 0);
+    addUnit("player", "rainbow", "worker", gate.x - 65, gate.y + 140, 0);
+    addUnit("player", "rainbow", "worker", gate.x - 120, gate.y - 55, 0);
+    state.player.woolUsed += 3;
+
+    addHero("player", "Derek the Dreamer", "soldier", gate.x + 60, gate.y - 10, {
+      special: "Hero: shielded spellcaster",
+      hpMultiplier: 2.05,
+      damageBonus: 8,
+      rangeBonus: 35
+    });
+    addHero("player", "Fiddler Fern", "heavy", gate.x + 105, gate.y + 65, {
+      special: "Hero: front line guardian",
+      hpMultiplier: 1.85,
+      damageBonus: 6,
+      speedBonus: 1.08
+    });
+    addHero("player", "Whisp", "soldier", gate.x + 30, gate.y - 105, {
+      special: "Hero: fast meadow scout",
+      hpMultiplier: 1.35,
+      damageBonus: 4,
+      rangeBonus: 70,
+      speedBonus: 1.35
+    });
+
     [
-      [-120, -10, "soldier"],
-      [-90, 80, "soldier"],
-      [-170, 50, "heavy"]
-    ].forEach(([dx, dy, type]) => addUnit("enemy", "wolves", type, enemyStart.x + dx, enemyStart.y + dy, 1));
-    const rescue = addUnit("ally", "rainbow", "soldier", playerStart.x + 230, playerStart.y - 115, 0);
-    rescue.hold = true;
+      [20, 110, "soldier"],
+      [80, 132, "soldier"],
+      [130, -125, "soldier"],
+      [190, -35, "heavy"]
+    ].forEach(([dx, dy, type]) => addUnit("player", "rainbow", type, gate.x + dx, gate.y + dy, 0));
+    state.player.woolUsed += stats.soldier.wool * 3 + stats.heavy.wool + stats.soldier.wool * 2 + stats.heavy.wool;
+
+    const tuft = addHero("ally", "Little Tuft", "worker", grove.x, grove.y, {
+      special: "Rescue: lost lamb",
+      hpMultiplier: 1.8,
+      speedBonus: 1.18,
+      hold: true
+    });
+    tuft.storyTag = "littleTuft";
+
+    const elder = addHero("ally", "Old Bluebell", "elite", grove.x + 70, grove.y - 35, {
+      special: "Rescue: elder seer",
+      hpMultiplier: 1.45,
+      damageBonus: 12,
+      rangeBonus: 18,
+      hold: true
+    });
+    elder.storyTag = "oldBluebell";
+
+    addResourceCluster(gate.x + 210, gate.y + 250);
+    addResourceCluster(grove.x - 190, grove.y + 130);
+    addResourceCluster(finalDen.x - 260, finalDen.y - 120);
+    addResource("lollipop", gate.x + 345, gate.y - 130, 9999);
+    addResource("lollipop", grove.x + 135, grove.y + 120, 9999);
+    addResource("lollipop", finalDen.x - 380, finalDen.y + 120, 9999);
+
+    const wolfForward = addStructure("enemy", "wolves", "base", forwardDen.x, forwardDen.y, 1);
+    wolfForward.storyTag = "forwardDen";
+    addStructure("enemy", "wolves", "production", forwardDen.x + 105, forwardDen.y - 120, 1);
+    const wolfFinal = addStructure("enemy", "wolves", "base", finalDen.x, finalDen.y, 1);
+    wolfFinal.storyTag = "finalDen";
+    addStructure("enemy", "wolves", "production", finalDen.x - 105, finalDen.y - 120, 1);
+    addStructure("enemy", "wolves", "heavyTech", finalDen.x - 170, finalDen.y + 130, 1);
+    state.enemy.woolMax += 36;
+
+    spawnWolfWave(gate.x + 500, gate.y - 160, gate.x + 80, gate.y, ["soldier", "soldier", "soldier", "heavy"], "opening");
+    spawnWolfWave(forwardDen.x - 80, forwardDen.y + 120, gate.x + 175, gate.y + 45, ["soldier", "soldier", "heavy"], "opening");
+    camera.x = Math.max(0, Math.min(world.w - camera.w, gate.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, gate.y - camera.h / 2));
+    showStoryCutscene("opening");
   }
 
   function spawnRoomSlots() {
@@ -993,6 +1105,112 @@
       addResourceCluster(spot.x + 105 * side, spot.y - 115);
       addResource("lollipop", spot.x - 110 * side, spot.y + 110, 9999);
     });
+  }
+
+  function spawnWolfWave(x, y, tx, ty, types, tag) {
+    types.forEach((type, index) => {
+      const offset = formationOffset(index, types.length);
+      const wolf = addUnit("enemy", "wolves", type, x + offset.x, y + offset.y, 1);
+      wolf.storyTag = tag || "wolfWave";
+      wolf.attackMove = true;
+      wolf.attackX = tx + offset.x;
+      wolf.attackY = ty + offset.y;
+      wolf.tx = wolf.attackX;
+      wolf.ty = wolf.attackY;
+      state.enemy.woolUsed += stats[type].wool;
+    });
+  }
+
+  function showStoryCutscene(key) {
+    if (!storyMode || !ui.storyCutscene || story.cutscenesSeen.has(key)) return;
+    const scenes = {
+      opening: {
+        kicker: "Rainbow Meadow",
+        title: "The Wolves at the Gate",
+        copy: "Derek, Fiddler Fern, and Whisp have reached the old Rainbow Gate. Hold this outpost, rescue the missing lambs, and break the Wolf Dens before the meadow goes quiet."
+      },
+      rescue: {
+        kicker: "Candy Grove",
+        title: "Little Tuft Is Safe",
+        copy: "Little Tuft and Old Bluebell join the flock. Bluebell remembers a hidden path to the forward Wolf Den, but the wolves have heard the bells."
+      },
+      forwardDen: {
+        kicker: "Meadow Road",
+        title: "The First Den Falls",
+        copy: "The path to Rainbow Meadow is open. The final Wolf Den is gathering one last pack near the far candy fields."
+      },
+      finalWave: {
+        kicker: "Final Push",
+        title: "Howls Over the Meadow",
+        copy: "The last wolves are charging the Rainbow Gate. Defend the heroes, gather the rescue flock, and end the invasion."
+      }
+    };
+    const scene = scenes[key];
+    if (!scene) return;
+    story.cutscenesSeen.add(key);
+    story.cutscene = true;
+    ui.storyCutsceneKicker.textContent = scene.kicker;
+    ui.storyCutsceneTitle.textContent = scene.title;
+    ui.storyCutsceneCopy.textContent = scene.copy;
+    ui.storyCutscene.hidden = false;
+  }
+
+  function closeStoryCutscene() {
+    if (!ui.storyCutscene) return;
+    ui.storyCutscene.hidden = true;
+    story.cutscene = false;
+  }
+
+  function playerCombatUnits() {
+    return state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker" && !unit.garrisonedIn);
+  }
+
+  function updateStoryEvents() {
+    if (!storyMode) return;
+    const gate = { x: 560, y: 720 };
+    const openingWolves = state.units.filter((unit) => unit.owner === "enemy" && unit.storyTag === "opening");
+    if (!story.gateHeld && (state.elapsed > 42 || openingWolves.length === 0)) {
+      story.gateHeld = true;
+      say("The Rainbow Gate holds. Find Little Tuft in the candy grove.");
+      updateTutorial(true);
+    }
+
+    const tuft = state.units.find((unit) => unit.storyTag === "littleTuft");
+    const elder = state.units.find((unit) => unit.storyTag === "oldBluebell");
+    const rescuers = [...state.units, ...state.structures].filter((entity) => entity.owner === "player");
+    if (!story.rescuedTuft && tuft && rescuers.some((entity) => Math.hypot(entity.x - tuft.x, entity.y - tuft.y) < 105)) {
+      [tuft, elder].filter(Boolean).forEach((unit) => {
+        unit.owner = "player";
+        unit.playerIndex = 0;
+        unit.hold = false;
+        unit.tx = gate.x + 140 + Math.random() * 80;
+        unit.ty = gate.y - 80 + Math.random() * 130;
+      });
+      story.rescuedTuft = true;
+      story.elderJoined = true;
+      state.player.woolUsed += stats.worker.wool + stats.elite.wool;
+      state.player.woolMax += 6;
+      showStoryCutscene("rescue");
+      spawnWolfWave(1260, 500, gate.x + 155, gate.y - 60, ["soldier", "soldier", "soldier", "heavy"], "rescueWave");
+      updateTutorial(true);
+    }
+
+    const forwardDenAlive = state.structures.some((structure) => structure.owner === "enemy" && structure.storyTag === "forwardDen");
+    if (!story.counterWaveSent && story.step >= 2 && state.elapsed > 88) {
+      story.counterWaveSent = true;
+      spawnWolfWave(1430, 720, gate.x + 160, gate.y + 40, ["soldier", "soldier", "heavy", "heavy"], "counterWave");
+      say("Wolf counterattack on the Rainbow Gate.");
+    }
+    if (!forwardDenAlive && !story.cutscenesSeen.has("forwardDen")) {
+      showStoryCutscene("forwardDen");
+      updateTutorial(true);
+    }
+    if (!story.finalWaveSent && !forwardDenAlive && playerCombatUnits().length >= 8) {
+      story.finalWaveSent = true;
+      showStoryCutscene("finalWave");
+      spawnWolfWave(1980, 950, gate.x + 80, gate.y, ["soldier", "soldier", "heavy", "elite", "heavy"], "finalWave");
+      say("Final wolf wave incoming.");
+    }
   }
 
   function say(text) {
@@ -2098,30 +2316,18 @@
   function attackStopPoint(unit, target, index = 0, total = 1) {
     const targetRadius = stats[target.type].radius;
     const unitRadius = stats[unit.type].radius;
-    const range = Math.max(18, stats[unit.type].range);
+    const range = Math.max(18, (stats[unit.type].range || 0) + (unit.rangeBonus || 0));
     const desired = target.kind === "structure"
       ? targetRadius + Math.max(unitRadius + 8, Math.min(range * 0.62, 58))
       : targetRadius + Math.max(unitRadius * 0.8, Math.min(range * 0.4, 44));
     const baseAngle = Math.atan2(unit.y - target.y, unit.x - target.x) || 0;
     const spread = (index - (total - 1) / 2) * 0.22;
     const angle = baseAngle + spread;
-    return {
-      x: Math.max(35, Math.min(world.w - 35, target.x + Math.cos(angle) * desired)),
-      y: Math.max(35, Math.min(world.h - 35, target.y + Math.sin(angle) * desired))
-    };
+    return nearestOpenMovePoint(unit, target.x + Math.cos(angle) * desired, target.y + Math.sin(angle) * desired, angle);
   }
 
   function openMovePointFor(unit, x, y) {
-    const blocking = state.structures
-      .filter((structure) => !(structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25))
-      .find((structure) => Math.hypot(x - structure.x, y - structure.y) < footprintRadius(structure.type) + stats[unit.type].radius + 14);
-    if (!blocking) return { x, y };
-    const radius = footprintRadius(blocking.type) + stats[unit.type].radius + 24;
-    const angle = Math.atan2(y - blocking.y, x - blocking.x) || Math.atan2(unit.y - blocking.y, unit.x - blocking.x) || 0;
-    return {
-      x: Math.max(35, Math.min(world.w - 35, blocking.x + Math.cos(angle) * radius)),
-      y: Math.max(35, Math.min(world.h - 35, blocking.y + Math.sin(angle) * radius))
-    };
+    return nearestOpenMovePoint(unit, x, y, Math.atan2(y - unit.y, x - unit.x));
   }
 
   function commandMovePoint(unit, x, y, offset) {
@@ -2133,10 +2339,7 @@
     const unitRadius = stats[unit.type].radius;
     const desired = baseRadius + unitRadius + 18;
     const angle = Math.atan2(unit.y - base.y, unit.x - base.x) || 0;
-    return {
-      x: Math.max(35, Math.min(world.w - 35, base.x + Math.cos(angle) * desired)),
-      y: Math.max(35, Math.min(world.h - 35, base.y + Math.sin(angle) * desired))
-    };
+    return nearestOpenMovePoint(unit, base.x + Math.cos(angle) * desired, base.y + Math.sin(angle) * desired, angle);
   }
 
   function samePlayerSlot(entity, playerIndex) {
@@ -2169,11 +2372,46 @@
   }
 
   function movementBlockedAt(unit, x, y) {
-    return state.structures.some((structure) => {
+    return Boolean(blockingStructureAt(unit, x, y));
+  }
+
+  function blockingStructureAt(unit, x, y, padding = 12) {
+    return state.structures.find((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return false;
-      const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + 12;
+      const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + padding;
       return Math.hypot(x - structure.x, y - structure.y) < minDistance;
     });
+  }
+
+  function nearestOpenMovePoint(unit, x, y, preferredAngle = 0) {
+    const target = {
+      x: Math.max(35, Math.min(world.w - 35, x)),
+      y: Math.max(35, Math.min(world.h - 35, y))
+    };
+    if (!movementBlockedAt(unit, target.x, target.y)) return target;
+
+    const firstBlocker = blockingStructureAt(unit, target.x, target.y);
+    const startAngle = firstBlocker
+      ? Math.atan2(target.y - firstBlocker.y, target.x - firstBlocker.x) || preferredAngle
+      : preferredAngle;
+    let best = null;
+    const angles = [0, 0.38, -0.38, 0.75, -0.75, 1.2, -1.2, Math.PI, Math.PI * 0.5, -Math.PI * 0.5];
+    for (const radius of [24, 42, 64, 88, 116, 148, 184, 226, 274]) {
+      for (const offset of angles) {
+        const angle = startAngle + offset;
+        const candidate = {
+          x: Math.max(35, Math.min(world.w - 35, target.x + Math.cos(angle) * radius)),
+          y: Math.max(35, Math.min(world.h - 35, target.y + Math.sin(angle) * radius))
+        };
+        if (movementBlockedAt(unit, candidate.x, candidate.y)) continue;
+        const travel = Math.hypot(candidate.x - unit.x, candidate.y - unit.y);
+        const miss = Math.hypot(candidate.x - target.x, candidate.y - target.y);
+        const score = miss + travel * 0.08;
+        if (!best || score < best.score) best = { x: candidate.x, y: candidate.y, score };
+      }
+      if (best) return { x: best.x, y: best.y };
+    }
+    return { x: unit.x, y: unit.y };
   }
 
   function smartMoveStep(unit, dx, dy, distance, step) {
@@ -2184,18 +2422,32 @@
     }
 
     const baseAngle = Math.atan2(dy, dx);
-    const options = [0.55, -0.55, 0.95, -0.95, 1.35, -1.35, Math.PI * 0.5, -Math.PI * 0.5];
-    for (const offset of options) {
-      const angle = baseAngle + offset;
-      const x = unit.x + Math.cos(angle) * step;
-      const y = unit.y + Math.sin(angle) * step;
-      if (!movementBlockedAt(unit, x, y)) return { x, y };
+    const blocker = blockingStructureAt(unit, directX, directY);
+    const aroundAngle = blocker ? Math.atan2(unit.y - blocker.y, unit.x - blocker.x) : baseAngle;
+    const targetX = unit.x + dx;
+    const targetY = unit.y + dy;
+    let best = null;
+    const options = [0.55, -0.55, 0.95, -0.95, 1.35, -1.35, Math.PI * 0.5, -Math.PI * 0.5, Math.PI * 0.78, -Math.PI * 0.78];
+    for (const distanceScale of [1, 0.72, 1.28]) {
+      for (const offset of options) {
+        const angle = (Math.abs(offset) > 1.4 ? aroundAngle : baseAngle) + offset;
+        const x = unit.x + Math.cos(angle) * step * distanceScale;
+        const y = unit.y + Math.sin(angle) * step * distanceScale;
+        if (movementBlockedAt(unit, x, y)) continue;
+        const score = Math.hypot(targetX - x, targetY - y);
+        if (!best || score < best.score) best = { x, y, score };
+      }
     }
-    return { x: unit.x, y: unit.y };
+    if (best) return { x: best.x, y: best.y };
+    return nearestOpenMovePoint(unit, unit.x, unit.y, aroundAngle);
   }
 
   function update(dt) {
     if (state.ended) return;
+    if (storyMode && story.cutscene) {
+      updateUi();
+      return;
+    }
     state.elapsed += dt;
     messageTimer -= dt;
     if (messageTimer <= 0) toast.textContent = "Gather Marshmallows, scout, and destroy the enemy main base.";
@@ -2253,6 +2505,7 @@
     updateHitFlashes(dt);
     fight(dt);
     cleanup();
+    updateStoryEvents();
     updateTutorial();
     updateUi();
   }
@@ -2421,21 +2674,23 @@
     state.units.forEach((unit) => {
       if (unit.garrisonedIn) return;
       const s = stats[unit.type];
-      if (!s.damage) return;
+      const unitDamage = (s.damage || 0) + (unit.damageBonus || 0);
+      const unitRange = (s.range || 0) + (unit.rangeBonus || 0);
+      if (!unitDamage) return;
       let target = unit.target ? attackTargetsFor(unit.owner, unit.playerIndex).find((e) => e.id === unit.target) : null;
       if (!target) {
-        target = nearestAttackTarget(unit.owner, unit.x, unit.y, s.range, unit.playerIndex);
+        target = nearestAttackTarget(unit.owner, unit.x, unit.y, unitRange, unit.playerIndex);
         if (target && unit.attackMove) unit.target = target.id;
       }
       if (!target) return;
       const d = Math.hypot(target.x - unit.x, target.y - unit.y);
-      if (d > s.range + stats[target.type].radius) return;
+      if (d > unitRange + stats[target.type].radius) return;
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
-        target.hp -= damageAfterArmor(s.damage, target);
+        target.hp -= damageAfterArmor(unitDamage, target);
         target.hitFlash = 0.18;
-        if (s.splash) applySplashDamage(unit, target, s.damage * 0.45, s.splash);
-        if (s.range > 55) fireBullet(unit, target, factionData[unit.faction].accent);
+        if (s.splash) applySplashDamage(unit, target, unitDamage * 0.45, s.splash);
+        if (unitRange > 55) fireBullet(unit, target, factionData[unit.faction].accent);
         else burst(target.x, target.y, factionData[unit.faction].accent);
         state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.2, r: 5, life: 0.25, color: "#fff7c4", kind: "spark" });
         if (target.type === "base" && target.hp <= 0) {
@@ -2873,6 +3128,7 @@
     }
 
     drawHealth(e, s);
+    if (e.heroName) drawHeroBadge(e, s);
     if (e.underConstruction) drawProgressBar(e.buildProgress, e.buildTime, s.radius, "#f2bf4d");
     const trainingJob = e.kind === "structure" && !e.underConstruction ? state.training.find((job) => job.producerId === e.id) : null;
     if (trainingJob) drawProgressBar(trainingJob.elapsed, trainingJob.duration, s.radius, "#83e79a");
@@ -2960,6 +3216,36 @@
       ctx.arc(s.radius * 0.3, -s.radius * 0.72, s.radius * 0.68, Math.PI * 1.05, Math.PI * 1.8);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  function drawHeroBadge(e, s) {
+    ctx.save();
+    ctx.fillStyle = "#fff4a8";
+    ctx.strokeStyle = "#263e36";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -s.radius - 28);
+    for (let i = 0; i < 5; i += 1) {
+      const angle = -Math.PI / 2 + i * (Math.PI * 2) / 5;
+      const outer = 8;
+      const inner = 4;
+      ctx.lineTo(Math.cos(angle) * outer, -s.radius - 28 + Math.sin(angle) * outer);
+      const next = angle + Math.PI / 5;
+      ctx.lineTo(Math.cos(next) * inner, -s.radius - 28 + Math.sin(next) * inner);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = "700 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fffaf0";
+    ctx.strokeStyle = "rgba(0,0,0,0.45)";
+    ctx.lineWidth = 3;
+    const y = -s.radius - 44;
+    ctx.strokeText(e.heroName, 0, y);
+    ctx.fillText(e.heroName, 0, y);
     ctx.restore();
   }
 
@@ -3335,7 +3621,7 @@
     }
     const first = selectedCommandSubject(picked);
     const f = factionData[first.faction];
-    const label = first.kind === "structure"
+    const label = first.heroName ? first.heroName : first.kind === "structure"
       ? (first.type === "base" ? f.base : first.type === "production" ? "Barracks" : first.type === "extractor" ? "Lollipop Extractor" : first.type === "forge" ? "Forge" : first.type === "heavyTech" ? f.heavyTech : first.type === "defenseTower" ? "Defence Tower" : "Wool Capacity")
       : unitLabel(first.type, first.faction);
     const hasBarracks = Boolean(readyStructure("production"));
@@ -3404,6 +3690,8 @@
         : "Defence Tower empty. Select a worker and right-click this tower to man the cannon.";
     } else if (first.kind === "structure" && first.type === "forge") {
       ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
+    } else if (first.heroName) {
+      ui.copy.textContent = first.storySpecial + ". Keep this hero alive and use attack-move with the rescue flock.";
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
@@ -3807,6 +4095,13 @@
   if (ui.allianceClose) {
     ui.allianceClose.addEventListener("click", () => {
       ui.alliancePanel.hidden = true;
+    });
+  }
+  if (ui.storyCutsceneNext) {
+    ui.storyCutsceneNext.addEventListener("click", () => {
+      closeStoryCutscene();
+      startMatchMusic();
+      say("Story mission resumed.");
     });
   }
   ui.scoreRematch.addEventListener("click", () => {

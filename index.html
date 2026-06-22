@@ -8,6 +8,36 @@
   </head>
   <body>
     <main class="shell">
+      <nav class="top-menu panel menu-panel" aria-label="Main menu">
+        <div class="top-menu__brand">
+          <p class="eyebrow">War of the Sheep</p>
+          <strong>Magic Sheep RTS</strong>
+        </div>
+
+        <div class="mode-menu" role="tablist" aria-label="Lobby modes">
+          <button class="mode-button is-active" id="mode-host" type="button" data-panel="host-panel" role="tab" aria-selected="true">
+            <span>Host</span>
+            <small>Create a room</small>
+          </button>
+          <button class="mode-button" id="mode-join" type="button" data-panel="join-panel" role="tab" aria-selected="false">
+            <span>Join</span>
+            <small>Enter code</small>
+          </button>
+          <button class="mode-button" id="mode-train" type="button" data-panel="train-panel" role="tab" aria-selected="false">
+            <span>Train</span>
+            <small>Fight AI</small>
+          </button>
+          <button class="mode-button" id="mode-story" type="button" data-panel="story-panel" role="tab" aria-selected="false">
+            <span>Story</span>
+            <small>Save meadow</small>
+          </button>
+          <button class="mode-button" id="mode-tutorial" type="button" data-panel="tutorial-panel" role="tab" aria-selected="false">
+            <span>Tutorial</span>
+            <small>Learn RTS</small>
+          </button>
+        </div>
+      </nav>
+
       <section class="hero" aria-labelledby="page-title">
         <div class="hero__art" aria-hidden="true">
           <div class="pasture">
@@ -48,36 +78,6 @@
       </section>
 
       <section class="lobby" aria-label="Game lobby setup">
-        <div class="panel menu-panel">
-          <div class="panel__heading">
-            <p class="eyebrow">Play</p>
-            <h2>Choose Mode</h2>
-          </div>
-
-          <div class="mode-menu" role="tablist" aria-label="Lobby modes">
-            <button class="mode-button is-active" id="mode-host" type="button" data-panel="host-panel" role="tab" aria-selected="true">
-              <span>Host</span>
-              <small>Create a room code.</small>
-            </button>
-            <button class="mode-button" id="mode-join" type="button" data-panel="join-panel" role="tab" aria-selected="false">
-              <span>Join</span>
-              <small>Enter a friend's code.</small>
-            </button>
-            <button class="mode-button" id="mode-train" type="button" data-panel="train-panel" role="tab" aria-selected="false">
-              <span>Train</span>
-              <small>Practice against AI.</small>
-            </button>
-            <button class="mode-button" id="mode-tutorial" type="button" data-panel="tutorial-panel" role="tab" aria-selected="false">
-              <span>Tutorial</span>
-              <small>Learn the RTS basics.</small>
-            </button>
-            <button class="mode-button" id="mode-story" type="button" data-panel="story-panel" role="tab" aria-selected="false">
-              <span>Story</span>
-              <small>Save Rainbow Meadow.</small>
-            </button>
-          </div>
-        </div>
-
         <div class="panel panel--flow" id="host-panel" role="tabpanel" aria-labelledby="mode-host">
           <div class="panel__heading">
             <p class="eyebrow">Create Room</p>
@@ -310,15 +310,23 @@
               <span class="tutorial-step__number">1</span>
               <div>
                 <h3>Rainbow Meadow Is In Trouble</h3>
-                <p>A sneaky wolf pack has built dens beyond the candy fields and is chasing the magic sheep from their home.</p>
+                <p>Begin at the old Rainbow Gate with Derek, Fiddler Fern, and Whisp already defending against the first wolf rush.</p>
               </div>
             </section>
 
             <section class="tutorial-step">
               <span class="tutorial-step__number">2</span>
               <div>
-                <h3>Build the Rescue Flock</h3>
-                <p>Gather Marshmallows, build a Barracks, and train Rainbow Sheep defenders before the wolves push in.</p>
+                <h3>Rescue the Lost Lambs</h3>
+                <p>Push into the candy grove, find Little Tuft and Old Bluebell, then bring them back before the wolf counterattack.</p>
+              </div>
+            </section>
+
+            <section class="tutorial-step">
+              <span class="tutorial-step__number">3</span>
+              <div>
+                <h3>Rebuild the Rescue Flock</h3>
+                <p>Use the defended outpost to train more Rainbow Sheep, hold the road, and prepare a real counterattack.</p>
               </div>
             </section>
 
@@ -326,7 +334,7 @@
               <span class="tutorial-step__number">★</span>
               <div>
                 <h3>Win the Meadow Back</h3>
-                <p>Destroy the Wolf Den to save Rainbow Meadow and prove Derek's dream magic is stronger than wolf mischief.</p>
+                <p>Break the forward Wolf Den, survive the final wave, and destroy every den to save Rainbow Meadow.</p>
               </div>
             </section>
           </div>
@@ -382,6 +390,10 @@
 
           <button class="button button--start" id="start-game" type="button" disabled>
             Start Skirmish
+          </button>
+
+          <button class="button button--quit" id="quit-lobby" type="button" disabled>
+            Quit Lobby
           </button>
 
           <p class="status" id="status">Ready at the meadow gate.</p>

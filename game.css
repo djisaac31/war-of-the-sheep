@@ -427,6 +427,62 @@ button {
   display: none;
 }
 
+.story-cutscene {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, rgba(7, 22, 17, 0.2), rgba(7, 22, 17, 0.72));
+  padding: 22px;
+}
+
+.story-cutscene[hidden] {
+  display: none;
+}
+
+.story-cutscene__card {
+  width: min(620px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 250, 240, 0.96);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.38);
+  color: #16231e;
+  padding: 26px;
+}
+
+.story-cutscene__card p {
+  margin: 0 0 14px;
+  color: #536b60;
+  font-size: 1.05rem;
+}
+
+.story-cutscene__card h2 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 6vw, 3.8rem);
+  line-height: 0.96;
+}
+
+#story-cutscene-kicker {
+  color: #8d63dc;
+  font-size: 0.8rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#story-cutscene-next {
+  min-height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: #263e36;
+  color: #fffaf0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 0 20px;
+}
+
 .score-card {
   width: min(720px, 100%);
   border: 1px solid rgba(255, 255, 255, 0.24);

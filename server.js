@@ -191,6 +191,20 @@ function removeAllianceRequests(room, aId, bId) {
   });
 }
 
+function removePlayer(room, index) {
+  const removed = room.players[index];
+  room.players.splice(index, 1);
+  room.alliances = (room.alliances || [])
+    .filter((pair) => pair[0] !== index && pair[1] !== index)
+    .map((pair) => pair.map((slot) => slot > index ? slot - 1 : slot));
+  room.allianceRequests = (room.allianceRequests || []).filter((request) => {
+    return request.fromId !== removed.id && request.toId !== removed.id;
+  });
+  room.players.forEach((player, playerIndexValue) => {
+    player.team = cleanTeam(player.team, room.matchType || "1v1", playerIndexValue);
+  });
+}
+
 function requireHost(body, room, res) {
   if (body.playerId !== room.players[0].id) {
     json(res, 403, { error: "Only the host can change the lobby", room: publicRoom(room) });
@@ -290,6 +304,23 @@ async function handleApi(req, res, url) {
     }
     room.players[index].ready = Boolean(body.ready);
     json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "leave") {
+    const body = await readBody(req);
+    const index = playerIndex(room, body.playerId);
+    if (index < 0) {
+      json(res, 404, { error: "Player not found" });
+      return;
+    }
+    if (index === 0 || room.players.length <= 1) {
+      rooms.delete(code);
+      json(res, 200, { left: true, closed: true });
+      return;
+    }
+    removePlayer(room, index);
+    json(res, 200, { left: true, room: publicRoom(room) });
     return;
   }
 

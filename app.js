@@ -17,6 +17,7 @@
   const copyLink = document.querySelector("#copy-link");
   const addAi = document.querySelector("#add-ai");
   const startGame = document.querySelector("#start-game");
+  const quitLobby = document.querySelector("#quit-lobby");
   const roomCodeInput = document.querySelector("#room-code-input");
   const mapName = document.querySelector("#map-name");
   const playerCount = document.querySelector("#player-count");
@@ -64,6 +65,51 @@
     writeRooms(rooms);
   }
 
+  function removeRoom(code) {
+    const rooms = readRooms();
+    delete rooms[code];
+    writeRooms(rooms);
+  }
+
+  function clearSession(code) {
+    const key = "war-of-the-sheep-session-" + code;
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
+
+  function leaveLocalRoom(code) {
+    const rooms = readRooms();
+    const room = rooms[code];
+    const session = readSession(code);
+    if (!room || !session || session.playerIndex === 0 || room.training) {
+      removeRoom(code);
+      clearSession(code);
+      return;
+    }
+    room.players = room.players.filter(function (_player, index) {
+      return index !== session.playerIndex;
+    });
+    room.players.forEach(function (player, index) {
+      player.host = index === 0;
+      player.team = player.team || slotTeam(room.matchType || "1v1", index);
+    });
+    rooms[code] = room;
+    writeRooms(rooms);
+    clearSession(code);
+  }
+
+  function returnToHome(message) {
+    if (lobbyPoll) {
+      clearInterval(lobbyPoll);
+      lobbyPoll = null;
+    }
+    activeRoom = null;
+    renderRoom(null);
+    showPanel("host-panel");
+    window.history.replaceState({}, "", window.location.pathname);
+    status.textContent = message || "Left the lobby.";
+  }
+
   function makeRoomCode() {
     const rooms = readRooms();
     let code = "";
@@ -82,7 +128,9 @@
     return selected ? selected.value : "";
   }
 
-  function showPanel(panelId) {
+  function showPanel(panelId, scrollToPanel, openMode) {
+    document.body.classList.toggle("mode-open", Boolean(openMode));
+
     modeButtons.forEach(function (button) {
       const active = button.dataset.panel === panelId;
       button.classList.toggle("is-active", active);
@@ -94,6 +142,13 @@
       panel.hidden = !active;
       panel.classList.toggle("is-hidden", !active);
     });
+
+    if (scrollToPanel) {
+      const panel = document.getElementById(panelId);
+      if (panel) setTimeout(function () {
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 30);
+    }
   }
 
   function launchRoom(code) {
@@ -400,6 +455,8 @@
 
   function renderRoom(room) {
     activeRoom = room;
+    const realRoom = Boolean(room && room.players && room.players.length > 0 && room.map !== "Waiting for server" && room.map !== "Waiting for host");
+    document.body.classList.toggle("has-room", realRoom);
     const session = room ? readSession(room.code) : null;
     const isHost = room && (room.training || session && session.playerIndex === 0);
     roomTitle.textContent = room ? (room.training ? "Training Ready" : "Room Open") : "No Room Yet";
@@ -422,6 +479,7 @@
 
     copyCode.disabled = !room;
     copyLink.disabled = !room;
+    quitLobby.disabled = !room;
     addAi.disabled = !room || !isHost || room.training || room.players.length >= room.maxPlayers;
     addAi.title = !room
       ? "Create a room first."
@@ -496,7 +554,7 @@
 
   modeButtons.forEach(function (button) {
     button.addEventListener("click", function () {
-      showPanel(button.dataset.panel);
+      showPanel(button.dataset.panel, true, true);
       if (button.dataset.panel === "join-panel") status.textContent = "Enter your friend's room code.";
       if (button.dataset.panel === "host-panel") status.textContent = activeRoom ? "Share the room code when ready." : "Create a room code for your friend.";
       if (button.dataset.panel === "train-panel") status.textContent = "Pick an AI difficulty and map.";
@@ -578,7 +636,7 @@
   });
 
   tutorialHost.addEventListener("click", function () {
-    showPanel("host-panel");
+    showPanel("host-panel", true, true);
     status.textContent = "Create a room, share the code, then start when your friend joins.";
   });
 
@@ -615,6 +673,7 @@
         saveSession(data.room.code, { playerId: data.playerId, playerIndex: data.playerIndex });
         saveRoom(data.room);
         renderRoom(data.room);
+        showPanel("host-panel", false, true);
         roomCodeInput.value = data.room.code;
         window.history.replaceState({}, "", "?room=" + encodeURIComponent(data.room.code));
         status.textContent = "Online room " + data.room.code + " is ready. Share this code.";
@@ -648,6 +707,7 @@
 
     saveRoom(room);
     renderRoom(room);
+    showPanel("host-panel", false, true);
     roomCodeInput.value = code;
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
     status.textContent = "Room " + code + " is ready. Share this code with your friend.";
@@ -800,6 +860,28 @@
     }
   });
 
+  quitLobby.addEventListener("click", async function () {
+    if (!activeRoom) return;
+    const code = activeRoom.code;
+    if (serverOnline && !activeRoom.training) {
+      const session = readSession(code);
+      try {
+        await api("/api/rooms/" + encodeURIComponent(code) + "/leave", {
+          method: "POST",
+          body: JSON.stringify({ playerId: session && session.playerId })
+        });
+      } catch (error) {
+        status.textContent = error.message;
+        return;
+      }
+      clearSession(code);
+      returnToHome(session && session.playerIndex === 0 ? "Host closed the lobby." : "You left the lobby.");
+      return;
+    }
+    leaveLocalRoom(code);
+    returnToHome("You left the lobby.");
+  });
+
   addAi.addEventListener("click", async function () {
     if (!activeRoom || activeRoom.players.length >= activeRoom.maxPlayers) return;
     const nextTeam = slotTeam(activeRoom.matchType || "1v1", activeRoom.players.length);
@@ -868,7 +950,7 @@
         renderRoom(data.room);
         status.textContent = "Room " + cleanCode + " found on the multiplayer server.";
         startLobbyPolling(cleanCode);
-        showPanel("join-panel");
+        showPanel("join-panel", false, true);
         return;
       } catch (error) {
         renderRoom({
@@ -879,7 +961,7 @@
           players: []
         });
         status.textContent = roomLoadErrorMessage(error);
-        showPanel("join-panel");
+        showPanel("join-panel", false, true);
         return;
       }
     }
@@ -893,7 +975,7 @@
     });
     status.textContent = room ? "Room " + cleanCode + " found. Enter your name to join." : "Enter your name to join " + cleanCode + ".";
     startLobbyPolling(cleanCode);
-    showPanel("join-panel");
+    showPanel("join-panel", false, true);
   }
 
   fillMapSelect(mapName, Number(playerCount.value));
