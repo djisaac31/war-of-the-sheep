@@ -26,6 +26,7 @@
   const tutorialTrain = document.querySelector("#tutorial-train");
   const tutorialHost = document.querySelector("#tutorial-host");
   const storyStart = document.querySelector("#story-start");
+  const campaignSelect = document.querySelector("#campaign-select");
 
   let activeRoom = null;
   let serverOnline = false;
@@ -559,18 +560,28 @@
       if (button.dataset.panel === "host-panel") status.textContent = activeRoom ? "Share the room code when ready." : "Create a room code for your friend.";
       if (button.dataset.panel === "train-panel") status.textContent = "Pick an AI difficulty and map.";
       if (button.dataset.panel === "tutorial-panel") status.textContent = "Learn the first build order, then practice against AI.";
-      if (button.dataset.panel === "story-panel") status.textContent = "Play the single player story mission in Rainbow Meadow.";
+      if (button.dataset.panel === "story-panel") status.textContent = "Play the single player story campaign in Rainbow Meadow.";
     });
   });
 
-  storyStart.addEventListener("click", function () {
+  function storyMapName(chapter) {
+    if (chapter === 2) return "Marshmallow Crossing";
+    if (chapter === 3) return "Sugar Spiral";
+    if (chapter === 4) return "Rainbow Ridge";
+    if (chapter === 5) return "Ember Orchard";
+    return "Rainbow Meadow";
+  }
+
+  function launchStoryChapter(chapter) {
+    const safeChapter = Math.max(1, Math.min(5, Number(chapter) || 1));
     const code = makeRoomCode();
     const room = {
       code,
-      map: "Rainbow Meadow",
+      map: storyMapName(safeChapter),
       maxPlayers: 2,
       training: true,
       story: true,
+      storyChapter: safeChapter,
       difficulty: "normal",
       createdAt: new Date().toISOString(),
       players: [
@@ -592,10 +603,32 @@
 
     saveRoom(room);
     renderRoom(room);
+    localStorage.setItem("magic-sheep-story-chapter", String(safeChapter));
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
-    status.textContent = "Story mission ready. Save Rainbow Meadow.";
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1";
+    status.textContent = "Story campaign mission " + safeChapter + " ready.";
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + safeChapter;
+  }
+
+  function renderCampaignProgress() {
+    const saved = Math.max(1, Math.min(5, Number(localStorage.getItem("magic-sheep-story-chapter") || 1)));
+    document.querySelectorAll("[data-story-chapter]").forEach(function (button) {
+      button.classList.toggle("is-current", Number(button.dataset.storyChapter) === saved);
+    });
+    if (storyStart) storyStart.textContent = saved > 1 ? "Continue Mission " + saved : "Start Campaign";
+  }
+
+  storyStart.addEventListener("click", function () {
+    launchStoryChapter(localStorage.getItem("magic-sheep-story-chapter") || 1);
   });
+
+  if (campaignSelect) {
+    campaignSelect.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-story-chapter]");
+      if (!button) return;
+      launchStoryChapter(button.dataset.storyChapter);
+    });
+    renderCampaignProgress();
+  }
 
   tutorialTrain.addEventListener("click", function () {
     const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];

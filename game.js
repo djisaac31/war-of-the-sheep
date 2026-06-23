@@ -124,10 +124,11 @@
   let roomSettings = readRoomSettings();
   const tutorialMode = params.get("tutorial") === "1" || Boolean(roomSettings.tutorial);
   const storyMode = params.get("story") === "1" || Boolean(roomSettings.story);
+  const storyChapter = storyMode ? Math.max(1, Math.min(5, Number(params.get("chapter") || roomSettings.storyChapter || localStorage.getItem("magic-sheep-story-chapter") || 1))) : 1;
   const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
   const aiDifficulty = String(roomSettings.difficulty || params.get("difficulty") || "normal").toLowerCase();
   ui.room.textContent = storyMode
-    ? "Story Mission"
+    ? "Story Mission " + storyChapter
     : tutorialMode
     ? "Tutorial Mission"
     : roomSettings.training ? "Training " + aiDifficulty.toUpperCase() + " - " + (roomSettings.map || "Candy Meadow")
@@ -279,7 +280,7 @@
     "Marshmallow Crown": { tint: "#8bb6cf", clearings: [[410, 850, 280, 170, 0], [790, 500, 280, 170, 0], [1560, 500, 280, 170, 0], [1990, 850, 280, 170, 0], [790, 1230, 280, 170, 0], [1560, 1230, 280, 170, 0]], riverY: 930, player: [330, 850], enemy: [2050, 850], playerGas: [760, 900], enemyGas: [1660, 900] },
     "Molten Sixfold": { tint: "#8fb06b", clearings: [[360, 430, 260, 150, 0], [1150, 390, 300, 160, 0], [2030, 430, 260, 150, 0], [360, 1280, 260, 150, 0], [1150, 1320, 300, 160, 0], [2030, 1280, 260, 150, 0], [1210, 850, 410, 230, 0]], riverY: 1180, player: [330, 430], enemy: [2070, 1280], playerGas: [710, 550], enemyGas: [1680, 1160] }
   };
-  let activeMap = mapProfiles[roomSettings.map] || mapProfiles["Candy Meadow"];
+  let activeMap = mapProfiles[storyMode ? storyMapName(storyChapter) : roomSettings.map] || mapProfiles["Candy Meadow"];
 
   const state = {
     player: { faction: "rainbow", lollipops: 0, marshmallows: 50, woolUsed: 3, woolMax: 12 },
@@ -361,8 +362,104 @@
     gateHeld: false,
     counterWaveSent: false,
     finalWaveSent: false,
+    finalWaveHeld: false,
     elderJoined: false,
-    missions: [
+    missions: []
+  };
+  story.missions = storyMissionsForChapter(storyChapter);
+
+  function storyMapName(chapter) {
+    if (chapter === 2) return "Marshmallow Crossing";
+    if (chapter === 3) return "Sugar Spiral";
+    if (chapter === 4) return "Rainbow Ridge";
+    if (chapter === 5) return "Ember Orchard";
+    return "Rainbow Meadow";
+  }
+
+  function storyMissionsForChapter(chapter) {
+    if (chapter === 2) {
+      return [
+        {
+          title: "Build the Counter Camp",
+          copy: "The flock has crossed into Marshmallow Crossing with a few builders and soldiers. Build a Barracks so the counterattack can keep going.",
+          task: "Build one Barracks",
+          done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "production" && !structure.underConstruction)
+        },
+        {
+          title: "Gather the Push",
+          copy: "Train a rescue group before marching through the crossing. Wolves patrol the road, so move together.",
+          task: "Control 8 combat sheep",
+          done: () => playerCombatUnits().length >= 8
+        },
+        {
+          title: "Break the Forward Den",
+          copy: "Destroy the Forward Wolf Den to clear the road toward Rainbow Meadow.",
+          task: "Destroy the Forward Wolf Den",
+          done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "forwardDen")
+        }
+      ];
+    }
+    if (chapter === 3) {
+      return [
+        {
+          title: "Escort Little Tuft",
+          copy: "Little Tuft can read the candy trail. Keep the rescue group together while wolves ambush the pass.",
+          task: "Little Tuft survives the first ambush",
+          done: () => story.finalWaveHeld
+        },
+        {
+          title: "Capture the Trail Camp",
+          copy: "Destroy the wolf camp at the center of Candy Pass so the flock can reach the siege road.",
+          task: "Destroy the Candy Pass Wolf Den",
+          done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "passDen")
+        }
+      ];
+    }
+    if (chapter === 4) {
+      return [
+        {
+          title: "Raise the Towers",
+          copy: "The wolves are surrounding Rainbow Ridge. Start with builders, soldiers, and a damaged fort. Build two Defence Towers.",
+          task: "Build or control 2 Defence Towers",
+          done: () => state.structures.filter((structure) => structure.owner === "player" && structure.type === "defenseTower" && !structure.underConstruction).length >= 2
+        },
+        {
+          title: "Survive the Moonfang Siege",
+          copy: "Hold the ridge until the wolf siege breaks, then counterattack.",
+          task: "Survive the siege wave",
+          done: () => story.finalWaveHeld
+        },
+        {
+          title: "Shatter the Siege Den",
+          copy: "Push out and destroy the Moonfang siege den.",
+          task: "Destroy the siege Wolf Den",
+          done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "siegeDen")
+        }
+      ];
+    }
+    if (chapter === 5) {
+      return [
+        {
+          title: "Hold the Bridge",
+          copy: "The wolves are making one last charge. Hold the candy bridge before the final attack.",
+          task: "Survive the bridge attack",
+          done: () => story.finalWaveHeld
+        },
+        {
+          title: "Rally Every Hero",
+          copy: "Derek, Fiddler Fern, Whisp, Little Tuft, and Old Bluebell are all here. Build one last army for the final den.",
+          task: "Control 12 combat sheep",
+          done: () => playerCombatUnits().length >= 12
+        },
+        {
+          title: "Defeat the Wolf Alpha",
+          copy: "The Wolf Alpha waits at the final den. Destroy every Wolf Den and the Alpha pack.",
+          task: "Destroy every Wolf Den",
+          done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
+        }
+      ];
+    }
+    return [
       {
         title: "Hold the Rainbow Gate",
         copy: "Derek, Fiddler Fern, and Whisp are already defending the old Rainbow Gate. Hold the line until the first wolf rush breaks.",
@@ -371,30 +468,18 @@
       },
       {
         title: "Rescue Little Tuft",
-        copy: "A tiny lamb is hiding by the candy grove. Move a hero or fighter to Little Tuft so the flock can guide them home.",
+        copy: "Little Tuft is hiding by the candy grove. Follow the golden marker and move a hero or fighter next to them.",
         task: "Reach Little Tuft at the candy grove",
         done: () => story.rescuedTuft
       },
       {
-        title: "Rebuild the Rescue Flock",
-        copy: "The gate is safe for now. Gather Marshmallows, train fighters, and get ready to push past the meadow road.",
-        task: "Control 10 Rainbow combat sheep",
-        done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 10
-      },
-      {
-        title: "Break the Forward Den",
-        copy: "The wolves built a forward den near the center path. Destroy it to open the way to Rainbow Meadow.",
-        task: "Destroy the forward Wolf Den",
-        done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "forwardDen")
-      },
-      {
-        title: "Save Rainbow Meadow",
-        copy: "Old Bluebell has shown the way to the final Wolf Den. Gather the heroes, attack-move together, and end the invasion.",
-        task: "Destroy every Wolf Den",
-        done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
+        title: "Clear the Raider Camp",
+        copy: "Little Tuft knows where the wolves are sneaking through. Destroy their raider camp to finish the first mission.",
+        task: "Destroy the Raider Wolf Den",
+        done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base" && structure.storyTag === "raiderCamp")
       }
-    ]
-  };
+    ];
+  }
 
   function fitCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -926,10 +1011,41 @@
   }
 
   function spawnStoryMission(playerStart, enemyStart) {
+    if (storyChapter === 2) {
+      spawnStoryChapterTwo(playerStart, enemyStart);
+      return;
+    }
+    if (storyChapter === 3) {
+      spawnStoryChapterThree(playerStart, enemyStart);
+      return;
+    }
+    if (storyChapter === 4) {
+      spawnStoryChapterFour(playerStart, enemyStart);
+      return;
+    }
+    if (storyChapter === 5) {
+      spawnStoryChapterFive(playerStart, enemyStart);
+      return;
+    }
+    spawnStoryChapterOne(playerStart, enemyStart);
+  }
+
+  function addStoryUnit(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
+    const unit = addUnit(owner, faction, type, x, y, playerIndex);
+    sideFor(owner).woolUsed += stats[type].wool;
+    return unit;
+  }
+
+  function addStoryHero(owner, name, type, x, y, options) {
+    const hero = addHero(owner, name, type, x, y, options);
+    sideFor(owner).woolUsed += stats[type].wool;
+    return hero;
+  }
+
+  function spawnStoryChapterOne(playerStart, enemyStart) {
     const gate = { x: 560, y: 720 };
-    const grove = { x: 980, y: 500 };
-    const forwardDen = { x: 1480, y: 760 };
-    const finalDen = { x: 2050, y: 990 };
+    const grove = { x: 975, y: 520 };
+    const raiderCamp = { x: 1720, y: 820 };
 
     state.player.marshmallows = 240;
     state.player.lollipops = 55;
@@ -943,24 +1059,23 @@
     northTower.storyTag = "rainbowGate";
     southTower.storyTag = "rainbowGate";
 
-    addUnit("player", "rainbow", "worker", gate.x - 15, gate.y + 45, 0);
-    addUnit("player", "rainbow", "worker", gate.x - 65, gate.y + 140, 0);
-    addUnit("player", "rainbow", "worker", gate.x - 120, gate.y - 55, 0);
-    state.player.woolUsed += 3;
+    addStoryUnit("player", "rainbow", "worker", gate.x - 15, gate.y + 45, 0);
+    addStoryUnit("player", "rainbow", "worker", gate.x - 65, gate.y + 140, 0);
+    addStoryUnit("player", "rainbow", "worker", gate.x - 120, gate.y - 55, 0);
 
-    addHero("player", "Derek the Dreamer", "soldier", gate.x + 60, gate.y - 10, {
+    addStoryHero("player", "Derek the Dreamer", "soldier", gate.x + 60, gate.y - 10, {
       special: "Hero: shielded spellcaster",
       hpMultiplier: 2.05,
       damageBonus: 8,
       rangeBonus: 35
     });
-    addHero("player", "Fiddler Fern", "heavy", gate.x + 105, gate.y + 65, {
+    addStoryHero("player", "Fiddler Fern", "heavy", gate.x + 105, gate.y + 65, {
       special: "Hero: front line guardian",
       hpMultiplier: 1.85,
       damageBonus: 6,
       speedBonus: 1.08
     });
-    addHero("player", "Whisp", "soldier", gate.x + 30, gate.y - 105, {
+    addStoryHero("player", "Whisp", "soldier", gate.x + 30, gate.y - 105, {
       special: "Hero: fast meadow scout",
       hpMultiplier: 1.35,
       damageBonus: 4,
@@ -973,8 +1088,7 @@
       [80, 132, "soldier"],
       [130, -125, "soldier"],
       [190, -35, "heavy"]
-    ].forEach(([dx, dy, type]) => addUnit("player", "rainbow", type, gate.x + dx, gate.y + dy, 0));
-    state.player.woolUsed += stats.soldier.wool * 3 + stats.heavy.wool + stats.soldier.wool * 2 + stats.heavy.wool;
+    ].forEach(([dx, dy, type]) => addStoryUnit("player", "rainbow", type, gate.x + dx, gate.y + dy, 0));
 
     const tuft = addHero("ally", "Little Tuft", "worker", grove.x, grove.y, {
       special: "Rescue: lost lamb",
@@ -995,25 +1109,227 @@
 
     addResourceCluster(gate.x + 210, gate.y + 250);
     addResourceCluster(grove.x - 190, grove.y + 130);
-    addResourceCluster(finalDen.x - 260, finalDen.y - 120);
+    addResourceCluster(raiderCamp.x - 260, raiderCamp.y - 120);
     addResource("lollipop", gate.x + 345, gate.y - 130, 9999);
     addResource("lollipop", grove.x + 135, grove.y + 120, 9999);
-    addResource("lollipop", finalDen.x - 380, finalDen.y + 120, 9999);
+    addResource("lollipop", raiderCamp.x - 380, raiderCamp.y + 120, 9999);
+
+    const wolfRaiders = addStructure("enemy", "wolves", "base", raiderCamp.x, raiderCamp.y, 1);
+    wolfRaiders.storyTag = "raiderCamp";
+    addStructure("enemy", "wolves", "production", raiderCamp.x + 105, raiderCamp.y - 120, 1);
+    state.enemy.woolMax += 18;
+
+    spawnWolfWave(gate.x + 500, gate.y - 160, gate.x + 80, gate.y, ["soldier", "soldier", "soldier", "heavy"], "opening");
+    spawnWolfWave(raiderCamp.x - 180, raiderCamp.y + 120, gate.x + 175, gate.y + 45, ["soldier", "soldier", "heavy"], "opening");
+    camera.x = Math.max(0, Math.min(world.w - camera.w, gate.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, gate.y - camera.h / 2));
+    showStoryCutscene("chapter1");
+  }
+
+  function spawnStoryChapterTwo(playerStart, enemyStart) {
+    const camp = { x: playerStart.x + 80, y: playerStart.y + 40 };
+    const forwardDen = { x: enemyStart.x - 180, y: enemyStart.y - 60 };
+
+    state.player.marshmallows = 220;
+    state.player.lollipops = 40;
+    state.player.woolMax += 22;
+
+    addStructure("player", "rainbow", "base", camp.x - 120, camp.y + 40, 0);
+    addStructure("player", "rainbow", "supply", camp.x - 230, camp.y - 95, 0);
+    addStoryUnit("player", "rainbow", "worker", camp.x + 15, camp.y + 25, 0);
+    addStoryUnit("player", "rainbow", "worker", camp.x - 55, camp.y + 115, 0);
+    addStoryUnit("player", "rainbow", "worker", camp.x - 115, camp.y - 45, 0);
+    addStoryHero("player", "Whisp", "soldier", camp.x + 160, camp.y - 65, {
+      special: "Hero: fast meadow scout",
+      hpMultiplier: 1.45,
+      damageBonus: 5,
+      rangeBonus: 70,
+      speedBonus: 1.35
+    });
+    addStoryUnit("player", "rainbow", "soldier", camp.x + 120, camp.y + 45, 0);
+    addStoryUnit("player", "rainbow", "soldier", camp.x + 170, camp.y + 85, 0);
+    addStoryUnit("player", "rainbow", "heavy", camp.x + 210, camp.y + 15, 0);
+
+    addResourceCluster(camp.x + 250, camp.y + 170);
+    addResourceCluster(1160, 860);
+    addResource("lollipop", camp.x + 365, camp.y - 115, 9999);
+    addResource("lollipop", 1330, 980, 9999);
 
     const wolfForward = addStructure("enemy", "wolves", "base", forwardDen.x, forwardDen.y, 1);
     wolfForward.storyTag = "forwardDen";
-    addStructure("enemy", "wolves", "production", forwardDen.x + 105, forwardDen.y - 120, 1);
+    addStructure("enemy", "wolves", "production", forwardDen.x - 105, forwardDen.y - 125, 1);
+    addStructure("enemy", "wolves", "defenseTower", forwardDen.x - 165, forwardDen.y + 95, 1);
+    state.enemy.woolMax += 28;
+    spawnWolfWave(forwardDen.x - 260, forwardDen.y + 50, camp.x + 125, camp.y + 25, ["soldier", "soldier", "heavy"], "crossingPatrol");
+
+    camera.x = Math.max(0, Math.min(world.w - camera.w, camp.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, camp.y - camera.h / 2));
+    showStoryCutscene("chapter2");
+  }
+
+  function spawnStoryChapterThree(playerStart, enemyStart) {
+    const camp = { x: playerStart.x + 40, y: playerStart.y + 35 };
+    const passDen = { x: 1280, y: 840 };
+
+    state.player.marshmallows = 180;
+    state.player.lollipops = 45;
+    state.player.woolMax += 24;
+
+    addStructure("player", "rainbow", "base", camp.x - 115, camp.y + 25, 0);
+    addStructure("player", "rainbow", "supply", camp.x - 225, camp.y - 105, 0);
+    addStoryHero("player", "Little Tuft", "worker", camp.x + 25, camp.y - 60, {
+      special: "Hero: trail guide",
+      hpMultiplier: 2.1,
+      speedBonus: 1.18
+    });
+    addStoryHero("player", "Whisp", "soldier", camp.x + 120, camp.y - 25, {
+      special: "Hero: fast meadow scout",
+      hpMultiplier: 1.5,
+      damageBonus: 5,
+      rangeBonus: 75,
+      speedBonus: 1.35
+    });
+    addStoryUnit("player", "rainbow", "worker", camp.x - 60, camp.y + 90, 0);
+    addStoryUnit("player", "rainbow", "soldier", camp.x + 85, camp.y + 70, 0);
+    addStoryUnit("player", "rainbow", "soldier", camp.x + 145, camp.y + 80, 0);
+    addStoryUnit("player", "rainbow", "heavy", camp.x + 190, camp.y + 35, 0);
+
+    addResourceCluster(camp.x + 250, camp.y + 160);
+    addResourceCluster(passDen.x - 260, passDen.y + 145);
+    addResource("lollipop", camp.x + 320, camp.y - 130, 9999);
+    addResource("lollipop", passDen.x - 120, passDen.y - 155, 9999);
+
+    const wolfPass = addStructure("enemy", "wolves", "base", passDen.x, passDen.y, 1);
+    wolfPass.storyTag = "passDen";
+    addStructure("enemy", "wolves", "production", passDen.x + 110, passDen.y - 120, 1);
+    state.enemy.woolMax += 26;
+    spawnWolfWave(passDen.x - 300, passDen.y - 60, camp.x + 120, camp.y + 20, ["soldier", "soldier", "heavy"], "finalWave");
+    spawnWolfWave(passDen.x + 110, passDen.y + 150, camp.x + 80, camp.y + 60, ["soldier", "heavy"], "finalWave");
+
+    camera.x = Math.max(0, Math.min(world.w - camera.w, camp.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, camp.y - camera.h / 2));
+    showStoryCutscene("chapter3");
+  }
+
+  function spawnStoryChapterFour(playerStart, enemyStart) {
+    const fort = { x: playerStart.x + 45, y: playerStart.y + 60 };
+    const siegeDen = { x: enemyStart.x - 150, y: enemyStart.y - 70 };
+
+    state.player.marshmallows = 280;
+    state.player.lollipops = 80;
+    state.player.woolMax += 34;
+
+    const base = addStructure("player", "rainbow", "base", fort.x - 110, fort.y + 20, 0);
+    base.hp = Math.floor(base.maxHp * 0.72);
+    addStructure("player", "rainbow", "supply", fort.x - 230, fort.y - 110, 0);
+    addStructure("player", "rainbow", "production", fort.x + 45, fort.y + 140, 0);
+    const tower = addStructure("player", "rainbow", "defenseTower", fort.x + 165, fort.y - 65, 0);
+    tower.hp = Math.floor(tower.maxHp * 0.65);
+    addStoryHero("player", "Fiddler Fern", "heavy", fort.x + 95, fort.y + 25, {
+      special: "Hero: ridge defender",
+      hpMultiplier: 2.0,
+      damageBonus: 8
+    });
+    addStoryUnit("player", "rainbow", "worker", fort.x - 35, fort.y + 55, 0);
+    addStoryUnit("player", "rainbow", "worker", fort.x - 85, fort.y + 135, 0);
+    addStoryUnit("player", "rainbow", "worker", fort.x + 20, fort.y - 65, 0);
+    addStoryUnit("player", "rainbow", "soldier", fort.x + 155, fort.y + 75, 0);
+    addStoryUnit("player", "rainbow", "soldier", fort.x + 205, fort.y + 20, 0);
+
+    addResourceCluster(fort.x + 250, fort.y + 160);
+    addResourceCluster(1180, 760);
+    addResource("lollipop", fort.x + 330, fort.y - 135, 9999);
+    addResource("lollipop", 1450, 730, 9999);
+
+    const wolfSiege = addStructure("enemy", "wolves", "base", siegeDen.x, siegeDen.y, 1);
+    wolfSiege.storyTag = "siegeDen";
+    addStructure("enemy", "wolves", "production", siegeDen.x - 105, siegeDen.y - 120, 1);
+    addStructure("enemy", "wolves", "heavyTech", siegeDen.x - 165, siegeDen.y + 120, 1);
+    state.enemy.woolMax += 34;
+    spawnWolfWave(siegeDen.x - 250, siegeDen.y + 90, fort.x + 135, fort.y, ["soldier", "soldier", "heavy", "heavy"], "finalWave");
+    spawnWolfWave(siegeDen.x - 100, siegeDen.y - 160, fort.x + 120, fort.y + 40, ["soldier", "heavy", "elite"], "finalWave");
+
+    camera.x = Math.max(0, Math.min(world.w - camera.w, fort.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, fort.y - camera.h / 2));
+    showStoryCutscene("chapter4");
+  }
+
+  function spawnStoryChapterFive(playerStart, enemyStart) {
+    const rally = { x: playerStart.x + 60, y: playerStart.y };
+    const finalDen = { x: enemyStart.x - 170, y: enemyStart.y - 40 };
+
+    state.player.marshmallows = 360;
+    state.player.lollipops = 125;
+    state.player.woolMax += 42;
+
+    addStructure("player", "rainbow", "base", rally.x - 120, rally.y + 35, 0);
+    addStructure("player", "rainbow", "supply", rally.x - 245, rally.y - 110, 0);
+    addStructure("player", "rainbow", "production", rally.x + 20, rally.y + 145, 0);
+    addStructure("player", "rainbow", "forge", rally.x + 165, rally.y - 80, 0);
+    addStoryUnit("player", "rainbow", "worker", rally.x - 10, rally.y + 40, 0);
+    addStoryUnit("player", "rainbow", "worker", rally.x - 60, rally.y + 135, 0);
+    addStoryUnit("player", "rainbow", "worker", rally.x - 120, rally.y - 50, 0);
+    addStoryUnit("player", "rainbow", "worker", rally.x + 85, rally.y + 85, 0);
+    addStoryHero("player", "Derek the Dreamer", "soldier", rally.x + 145, rally.y - 15, {
+      special: "Hero: shielded spellcaster",
+      hpMultiplier: 2.15,
+      damageBonus: 9,
+      rangeBonus: 35
+    });
+    addStoryHero("player", "Fiddler Fern", "heavy", rally.x + 185, rally.y + 55, {
+      special: "Hero: front line guardian",
+      hpMultiplier: 1.95,
+      damageBonus: 7,
+      speedBonus: 1.08
+    });
+    addStoryHero("player", "Whisp", "soldier", rally.x + 105, rally.y - 115, {
+      special: "Hero: fast meadow scout",
+      hpMultiplier: 1.45,
+      damageBonus: 5,
+      rangeBonus: 75,
+      speedBonus: 1.35
+    });
+    addStoryHero("player", "Little Tuft", "worker", rally.x + 15, rally.y - 115, {
+      special: "Hero: brave builder",
+      hpMultiplier: 1.9,
+      speedBonus: 1.2
+    });
+    addStoryHero("player", "Old Bluebell", "elite", rally.x + 240, rally.y - 40, {
+      special: "Hero: elder seer",
+      hpMultiplier: 1.5,
+      damageBonus: 14,
+      rangeBonus: 18
+    });
+    [
+      [145, 120, "soldier"],
+      [200, 130, "soldier"],
+      [260, 80, "heavy"],
+      [300, 135, "heavy"]
+    ].forEach(([dx, dy, type]) => addStoryUnit("player", "rainbow", type, rally.x + dx, rally.y + dy, 0));
+
+    addResourceCluster(rally.x + 260, rally.y + 170);
+    addResourceCluster(1180, 1040);
+    addResource("lollipop", rally.x + 365, rally.y - 130, 9999);
+    addResource("lollipop", 1370, 930, 9999);
+
     const wolfFinal = addStructure("enemy", "wolves", "base", finalDen.x, finalDen.y, 1);
     wolfFinal.storyTag = "finalDen";
-    addStructure("enemy", "wolves", "production", finalDen.x - 105, finalDen.y - 120, 1);
-    addStructure("enemy", "wolves", "heavyTech", finalDen.x - 170, finalDen.y + 130, 1);
-    state.enemy.woolMax += 36;
+    addStructure("enemy", "wolves", "production", finalDen.x - 115, finalDen.y - 125, 1);
+    addStructure("enemy", "wolves", "heavyTech", finalDen.x - 175, finalDen.y + 135, 1);
+    addStructure("enemy", "wolves", "defenseTower", finalDen.x + 120, finalDen.y + 105, 1);
+    state.enemy.woolMax += 42;
+    spawnWolfWave(finalDen.x - 310, finalDen.y + 130, rally.x + 160, rally.y + 20, ["soldier", "soldier", "heavy", "heavy", "elite"], "finalWave");
+    spawnWolfWave(finalDen.x - 120, finalDen.y - 160, rally.x + 185, rally.y + 65, ["soldier", "heavy", "elite"], "finalWave");
+    const alpha = addStoryUnit("enemy", "wolves", "extraHeavy", finalDen.x + 120, finalDen.y - 25, 1);
+    alpha.name = "Wolf Alpha";
+    alpha.storyTag = "wolfAlpha";
+    alpha.maxHp *= 1.35;
+    alpha.hp = alpha.maxHp;
+    alpha.damage += 10;
 
-    spawnWolfWave(gate.x + 500, gate.y - 160, gate.x + 80, gate.y, ["soldier", "soldier", "soldier", "heavy"], "opening");
-    spawnWolfWave(forwardDen.x - 80, forwardDen.y + 120, gate.x + 175, gate.y + 45, ["soldier", "soldier", "heavy"], "opening");
-    camera.x = Math.max(0, Math.min(world.w - camera.w, gate.x - camera.w / 2));
-    camera.y = Math.max(0, Math.min(world.h - camera.h, gate.y - camera.h / 2));
-    showStoryCutscene("opening");
+    camera.x = Math.max(0, Math.min(world.w - camera.w, rally.x - camera.w / 2));
+    camera.y = Math.max(0, Math.min(world.h - camera.h, rally.y - camera.h / 2));
+    showStoryCutscene("chapter5");
   }
 
   function spawnRoomSlots() {
@@ -1124,20 +1440,40 @@
   function showStoryCutscene(key) {
     if (!storyMode || !ui.storyCutscene || story.cutscenesSeen.has(key)) return;
     const scenes = {
-      opening: {
+      chapter1: {
         kicker: "Rainbow Meadow",
         title: "The Wolves at the Gate",
-        copy: "Derek, Fiddler Fern, and Whisp have reached the old Rainbow Gate. Hold this outpost, rescue the missing lambs, and break the Wolf Dens before the meadow goes quiet."
+        copy: "Derek, Fiddler Fern, and Whisp have reached the old Rainbow Gate. Hold the outpost, follow the golden signal to Little Tuft, then clear the raider den."
+      },
+      chapter2: {
+        kicker: "Marshmallow Crossing",
+        title: "Counterattack at the Crossing",
+        copy: "The rescued flock found the wolf road. You begin with builders and soldiers, but you must build a Barracks before the counterattack can grow."
+      },
+      chapter3: {
+        kicker: "Candy Pass",
+        title: "Little Tuft Leads the Way",
+        copy: "Little Tuft can hear the candy trail under the grass. Escort the lamb through the ambush and destroy the pass den."
+      },
+      chapter4: {
+        kicker: "Rainbow Ridge",
+        title: "Moonfang Siege",
+        copy: "The wolves have surrounded an old ridge fort. Repair the line, raise Defence Towers, and survive the siege."
+      },
+      chapter5: {
+        kicker: "Ember Orchard",
+        title: "The Last Wolf Den",
+        copy: "The heroes have reached the orchard. Hold the bridge, rally the final flock, and destroy the Wolf Alpha's den."
       },
       rescue: {
         kicker: "Candy Grove",
         title: "Little Tuft Is Safe",
-        copy: "Little Tuft and Old Bluebell join the flock. Bluebell remembers a hidden path to the forward Wolf Den, but the wolves have heard the bells."
+        copy: "Little Tuft and Old Bluebell join the flock. Bluebell remembers a hidden path through Marshmallow Crossing, but first the raider camp must fall."
       },
       forwardDen: {
-        kicker: "Meadow Road",
+        kicker: "Marshmallow Crossing",
         title: "The First Den Falls",
-        copy: "The path to Rainbow Meadow is open. The final Wolf Den is gathering one last pack near the far candy fields."
+        copy: "The crossing is open. The final Wolf Den is gathering one last pack in Ember Orchard."
       },
       finalWave: {
         kicker: "Final Push",
@@ -1167,6 +1503,26 @@
 
   function updateStoryEvents() {
     if (!storyMode) return;
+    if (storyChapter === 2) {
+      updateStoryChapterTwoEvents();
+      return;
+    }
+    if (storyChapter === 3) {
+      updateStoryChapterThreeEvents();
+      return;
+    }
+    if (storyChapter === 4) {
+      updateStoryChapterFourEvents();
+      return;
+    }
+    if (storyChapter === 5) {
+      updateStoryChapterFiveEvents();
+      return;
+    }
+    updateStoryChapterOneEvents();
+  }
+
+  function updateStoryChapterOneEvents() {
     const gate = { x: 560, y: 720 };
     const openingWolves = state.units.filter((unit) => unit.owner === "enemy" && unit.storyTag === "opening");
     if (!story.gateHeld && (state.elapsed > 42 || openingWolves.length === 0)) {
@@ -1195,21 +1551,64 @@
       updateTutorial(true);
     }
 
-    const forwardDenAlive = state.structures.some((structure) => structure.owner === "enemy" && structure.storyTag === "forwardDen");
     if (!story.counterWaveSent && story.step >= 2 && state.elapsed > 88) {
       story.counterWaveSent = true;
-      spawnWolfWave(1430, 720, gate.x + 160, gate.y + 40, ["soldier", "soldier", "heavy", "heavy"], "counterWave");
+      spawnWolfWave(1650, 820, gate.x + 160, gate.y + 40, ["soldier", "soldier", "heavy", "heavy"], "counterWave");
       say("Wolf counterattack on the Rainbow Gate.");
+    }
+  }
+
+  function updateStoryChapterTwoEvents() {
+    const forwardDenAlive = state.structures.some((structure) => structure.owner === "enemy" && structure.storyTag === "forwardDen");
+    const playerBase = state.structures.find((structure) => structure.owner === "player" && structure.type === "base");
+    if (!story.counterWaveSent && story.step >= 1 && state.elapsed > 72 && playerBase) {
+      story.counterWaveSent = true;
+      spawnWolfWave(1680, 930, playerBase.x + 120, playerBase.y + 40, ["soldier", "soldier", "heavy", "heavy"], "counterWave");
+      say("Wolf counterattack crossing the marshmallow road.");
     }
     if (!forwardDenAlive && !story.cutscenesSeen.has("forwardDen")) {
       showStoryCutscene("forwardDen");
       updateTutorial(true);
     }
-    if (!story.finalWaveSent && !forwardDenAlive && playerCombatUnits().length >= 8) {
-      story.finalWaveSent = true;
+  }
+
+  function updateStoryChapterThreeEvents() {
+    const ambushers = state.units.filter((unit) => unit.owner === "enemy" && unit.storyTag === "finalWave");
+    if (!story.finalWaveHeld && (state.elapsed > 38 || ambushers.length === 0)) {
+      story.finalWaveHeld = true;
+      say("Little Tuft found the trail. Destroy the Candy Pass Wolf Den.");
+      updateTutorial(true);
+    }
+  }
+
+  function updateStoryChapterFourEvents() {
+    const siegeWolves = state.units.filter((unit) => unit.owner === "enemy" && unit.storyTag === "finalWave");
+    if (!story.finalWaveHeld && (state.elapsed > 65 || siegeWolves.length === 0)) {
+      story.finalWaveHeld = true;
+      say("The Moonfang siege is broken. Counterattack the siege den.");
+      updateTutorial(true);
+    }
+  }
+
+  function updateStoryChapterFiveEvents() {
+    const finalWolves = state.units.filter((unit) => unit.owner === "enemy" && unit.storyTag === "finalWave");
+    if (!story.finalWaveHeld && (state.elapsed > 55 || finalWolves.length === 0)) {
+      story.finalWaveHeld = true;
+      say("The bridge holds. Rally the heroes and destroy the final Wolf Den.");
+      updateTutorial(true);
+    }
+    if (!story.finalWaveSent && state.elapsed > 95) {
+      const playerBase = state.structures.find((structure) => structure.owner === "player" && structure.type === "base");
+      const finalDen = state.structures.find((structure) => structure.owner === "enemy" && structure.storyTag === "finalDen");
+      if (playerBase && finalDen) {
+        story.finalWaveSent = true;
+        spawnWolfWave(finalDen.x - 120, finalDen.y + 170, playerBase.x + 130, playerBase.y + 45, ["soldier", "heavy", "elite", "heavy"], "finalWave");
+        say("The Wolf Alpha sends the last wave.");
+      }
+    }
+    if (!state.structures.some((structure) => structure.owner === "enemy" && structure.storyTag === "finalDen") && !story.cutscenesSeen.has("finalWave")) {
       showStoryCutscene("finalWave");
-      spawnWolfWave(1980, 950, gate.x + 80, gate.y, ["soldier", "soldier", "heavy", "elite", "heavy"], "finalWave");
-      say("Final wolf wave incoming.");
+      updateTutorial(true);
     }
   }
 
@@ -1225,14 +1624,14 @@
       tracker.step += 1;
       force = true;
       if (tracker.step < tracker.missions.length) say("Mission complete. Next objective: " + tracker.missions[tracker.step].title + ".");
-      else say(storyMode ? "Final objective complete. Finish the wolves and save Rainbow Meadow." : "Tutorial complete. Destroy the base to finish the match.");
+      else say(storyMode ? "Mission objectives complete. Finish the remaining Wolf Den." : "Tutorial complete. Destroy the base to finish the match.");
     }
 
     const mission = tracker.missions[Math.min(tracker.step, tracker.missions.length - 1)];
     if (!force && tracker.announced === tracker.step) return;
     tracker.announced = tracker.step;
-    ui.tutorialTitle.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "Rainbow Meadow Saved" : "Tutorial Complete") : mission.title;
-    ui.tutorialCopy.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "The wolves are retreating. Destroy their last den to secure the meadow." : "You know the basics. Finish the enemy base to win.") : mission.copy;
+    ui.tutorialTitle.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "Mission Almost Won" : "Tutorial Complete") : mission.title;
+    ui.tutorialCopy.textContent = tracker.step >= tracker.missions.length ? (storyMode ? "Destroy the remaining Wolf Den or clean up the last wolf pack to complete this mission." : "You know the basics. Finish the enemy base to win.") : mission.copy;
     ui.tutorialList.innerHTML = "";
     tracker.missions.forEach((item, index) => {
       const li = document.createElement("li");
@@ -2756,8 +3155,14 @@
 
     const enemyBase = state.structures.find((s) => isHostileTo("player", s, localPlayerIndex()) && s.type === "base");
     const playerBase = state.structures.find((s) => ownersAreAllied("player", s.owner) && s.type === "base");
-    if (!enemyBase) endMatch("victory");
+    if (!enemyBase && (!storyMode || storyVictoryReady())) endMatch("victory");
     if (!playerBase) endMatch("defeat");
+  }
+
+  function storyVictoryReady() {
+    if (storyChapter === 1) return story.gateHeld && story.rescuedTuft;
+    if (storyChapter === 3 || storyChapter === 4 || storyChapter === 5) return story.finalWaveHeld;
+    return true;
   }
 
   function formatTime(seconds) {
@@ -2800,7 +3205,7 @@
     ui.scoreArmy.textContent = state.units.filter((u) => u.owner === "player" && u.type !== "worker").length;
     ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
     if (storyMode) {
-      ui.scoreRematch.textContent = result === "victory" ? "Play Story Again" : "Try Again";
+      ui.scoreRematch.textContent = result === "victory" && storyChapter < 5 ? "Next Mission" : result === "victory" ? "Back to Lobby" : "Try Again";
     } else if (tutorialMode) {
       const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
       if (result === "victory" && nextFaction) {
@@ -2849,6 +3254,29 @@
     localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
     localStorage.setItem("magic-sheep-tutorial-race", String(index));
     window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1";
+  }
+
+  function launchStoryChapter(chapter) {
+    const code = makeTutorialRoomCode();
+    const room = {
+      code,
+      map: storyMapName(chapter),
+      maxPlayers: 2,
+      training: true,
+      story: true,
+      storyChapter: chapter,
+      difficulty: "normal",
+      createdAt: new Date().toISOString(),
+      players: [
+        { name: "Derek", faction: "Rainbow Sheep", host: true },
+        { name: "Wolf Pack", faction: "Wolves", host: false, ai: true }
+      ]
+    };
+    const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms")) || {};
+    rooms[code] = room;
+    localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
+    localStorage.setItem("magic-sheep-story-chapter", String(chapter));
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + chapter;
   }
 
   async function startMatchMusic() {
@@ -3000,6 +3428,7 @@
     state.units.forEach((u) => {
       if (visibleToPlayer(u)) drawEntity(u);
     });
+    drawStoryMarkers();
     drawRallyPoints();
     state.effects.forEach(drawEffect);
     drawPlacementGhost();
@@ -3007,6 +3436,42 @@
     ctx.restore();
     drawSelectionBox();
     drawMinimap();
+  }
+
+  function drawStoryMarkers() {
+    if (!storyMode) return;
+    const targets = [];
+    const tuft = state.units.find((unit) => unit.storyTag === "littleTuft");
+    if (tuft && !story.rescuedTuft) targets.push({ entity: tuft, label: "Little Tuft", color: "#fff47a" });
+    const targetTags = ["raiderCamp", "forwardDen", "passDen", "siegeDen", "finalDen", "wolfAlpha"];
+    targetTags.forEach((tag) => {
+      const entity = [...state.structures, ...state.units].find((item) => item.storyTag === tag && item.owner === "enemy" && visibleToPlayer(item));
+      if (entity) targets.push({ entity, label: tag === "wolfAlpha" ? "Wolf Alpha" : "Objective", color: "#ff705d" });
+    });
+    if (!targets.length) return;
+    const pulse = 0.5 + Math.sin(state.elapsed * 4) * 0.5;
+    ctx.save();
+    ctx.lineWidth = 5;
+    targets.slice(0, 3).forEach(({ entity, label, color }) => {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color === "#fff47a" ? "rgba(255, 244, 122, 0.18)" : "rgba(255, 112, 93, 0.14)";
+      ctx.setLineDash([18, 12]);
+      ctx.beginPath();
+      ctx.arc(entity.x, entity.y, 74 + pulse * 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(entity.x, entity.y, 92 + pulse * 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color === "#fff47a" ? "#fff8b4" : "#ffd6cf";
+      ctx.strokeStyle = "rgba(20, 36, 30, 0.85)";
+      ctx.lineWidth = 7;
+      ctx.font = "700 24px sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeText(label, entity.x, entity.y - 95);
+      ctx.fillText(label, entity.x, entity.y - 95);
+    });
+    ctx.restore();
   }
 
   function drawTerrain() {
@@ -3592,9 +4057,9 @@
     [...state.structures, ...state.units].forEach((e) => {
       if (e.kind === "unit" && e.garrisonedIn) return;
       if (!visibleToPlayer(e)) return;
-      mctx.fillStyle = minimapOwnerColor(e.owner);
+      mctx.fillStyle = storyMode && e.storyTag === "littleTuft" && !story.rescuedTuft ? "#fff47a" : minimapOwnerColor(e.owner);
       mctx.beginPath();
-      mctx.arc(e.x * sx, e.y * sy, e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
+      mctx.arc(e.x * sx, e.y * sy, storyMode && e.storyTag === "littleTuft" && !story.rescuedTuft ? 5 : e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
       mctx.fill();
     });
     mctx.strokeStyle = "#fff47a";
@@ -4105,6 +4570,17 @@
     });
   }
   ui.scoreRematch.addEventListener("click", () => {
+    if (storyMode) {
+      if (state.result === "victory" && storyChapter < 5) {
+        launchStoryChapter(storyChapter + 1);
+        return;
+      }
+      if (state.result === "victory") {
+        localStorage.removeItem("magic-sheep-story-chapter");
+        window.location.href = "./index.html";
+        return;
+      }
+    }
     if (tutorialMode && state.result === "victory") {
       const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
       if (nextFaction) {

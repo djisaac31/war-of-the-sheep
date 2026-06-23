@@ -656,6 +656,41 @@ button:focus-visible {
   margin-top: 16px;
 }
 
+.campaign-select {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.campaign-mission {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(222, 215, 193, 0.95);
+  border-radius: 8px;
+  background: #fffdf6;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.campaign-mission:hover,
+.campaign-mission.is-current {
+  border-color: #38a9a8;
+  background: #e5f8ef;
+}
+
+.campaign-mission span,
+.campaign-mission small {
+  color: #5f746a;
+  font-weight: 800;
+}
+
+.campaign-mission strong {
+  font-size: 1.05rem;
+}
+
 .room {
   position: static;
   display: grid;
