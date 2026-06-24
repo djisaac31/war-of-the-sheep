@@ -919,7 +919,7 @@
 
   function attackTargetsFor(owner, sourcePlayerIndex = null) {
     return [...state.units.filter((u) => !u.garrisonedIn), ...state.structures]
-      .filter((entity) => entity.hp > 0 && isHostileTo(owner, entity, sourcePlayerIndex));
+      .filter((entity) => entity.hp > 0 && !entity.untargetable && isHostileTo(owner, entity, sourcePlayerIndex));
   }
 
   function nearestAttackTarget(owner, x, y, range, sourcePlayerIndex = null) {
@@ -1044,7 +1044,7 @@
 
   function spawnStoryChapterOne(playerStart, enemyStart) {
     const gate = { x: 560, y: 720 };
-    const grove = { x: 975, y: 520 };
+    const grove = { x: 1210, y: 470 };
     const raiderCamp = { x: 1720, y: 820 };
 
     state.player.marshmallows = 240;
@@ -1097,6 +1097,9 @@
       hold: true
     });
     tuft.storyTag = "littleTuft";
+    tuft.invulnerable = true;
+    tuft.untargetable = true;
+    tuft.noAttack = true;
 
     const elder = addHero("ally", "Old Bluebell", "elite", grove.x + 70, grove.y - 35, {
       special: "Rescue: elder seer",
@@ -3004,6 +3007,13 @@
       }
     }
 
+    if (unit.noAttack) {
+      unit.target = null;
+      unit.attackMove = false;
+      unit.attackX = null;
+      unit.attackY = null;
+    }
+
     if (unit.target) {
       const target = [...state.units, ...state.structures].find((e) => e.id === unit.target);
       if (target && !isHostileTo(unit.owner, target, unit.playerIndex)) {
@@ -3072,6 +3082,7 @@
     });
     state.units.forEach((unit) => {
       if (unit.garrisonedIn) return;
+      if (unit.noAttack) return;
       const s = stats[unit.type];
       const unitDamage = (s.damage || 0) + (unit.damageBonus || 0);
       const unitRange = (s.range || 0) + (unit.rangeBonus || 0);
@@ -3101,7 +3112,7 @@
 
   function applySplashDamage(unit, target, damage, radius) {
     [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].forEach((entity) => {
-      if (entity.id === target.id || !isHostileTo(unit.owner, entity, unit.playerIndex)) return;
+      if (entity.id === target.id || entity.untargetable || !isHostileTo(unit.owner, entity, unit.playerIndex)) return;
       const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
       if (distance > radius + stats[entity.type].radius) return;
       entity.hp -= damageAfterArmor(damage, entity);
@@ -3111,6 +3122,7 @@
   }
 
   function damageAfterArmor(damage, target) {
+    if (target.invulnerable) return 0;
     if (target.owner !== "player" || target.kind !== "unit") return damage;
     if ((target.type === "elite" || target.type === "extraHeavy") && upgrades.eliteArmor.researched) return Math.max(1, damage - 5);
     if ((target.type === "soldier" || target.type === "heavy") && upgrades.armor.researched) return Math.max(1, damage - 3);
