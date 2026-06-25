@@ -511,6 +511,40 @@ button {
   margin-top: 0;
 }
 
+.score-record {
+  color: #536b60;
+  font-weight: 850;
+}
+
+.campaign-reward {
+  border-block: 1px solid #d8cfb6;
+  padding: 14px 0;
+}
+
+.campaign-reward > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.campaign-reward button {
+  min-height: 40px;
+  border: 1px solid #b7aa88;
+  border-radius: 6px;
+  background: #fffdf7;
+  color: #263e36;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 8px 12px;
+}
+
+.campaign-reward button.is-chosen {
+  border-color: #8d63dc;
+  background: #eee5ff;
+}
+
 .score-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

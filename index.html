@@ -143,6 +143,16 @@
                   <option value="6">6 Players</option>
                 </select>
               </label>
+
+              <label class="field">
+                <span>AI Difficulty</span>
+                <select id="host-ai-difficulty" name="hostAiDifficulty">
+                  <option value="easy">Easy</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="hard">Hard</option>
+                  <option value="nightmare">Nightmare</option>
+                </select>
+              </label>
             </div>
 
             <button class="button button--primary" type="submit" data-testid="host-game-button">
@@ -229,6 +239,7 @@
                   <option value="easy">Easy</option>
                   <option value="normal" selected>Normal</option>
                   <option value="hard">Hard</option>
+                  <option value="nightmare">Nightmare</option>
                 </select>
               </label>
 
@@ -340,6 +351,15 @@
           </div>
 
           <div class="tutorial-actions">
+            <label class="field campaign-difficulty">
+              <span>Campaign Difficulty</span>
+              <select id="story-difficulty" name="storyDifficulty">
+                <option value="story">Story</option>
+                <option value="normal" selected>Normal</option>
+                <option value="hard">Hard</option>
+                <option value="nightmare">Nightmare</option>
+              </select>
+            </label>
             <button class="button button--start" id="story-start" type="button">Continue Campaign</button>
           </div>
 

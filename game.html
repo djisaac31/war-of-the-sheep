@@ -75,6 +75,10 @@
             <button id="unit-stop" data-command-button="unit" type="button">Stop</button>
             <button id="unit-hold" data-command-button="unit" type="button">Hold<br>Position</button>
             <button id="unit-patrol" data-command-button="unit" type="button">Patrol</button>
+            <button id="unit-formation" data-command-button="unit" type="button">Formation<br>Box</button>
+            <button id="map-ping" data-command-button="unit" type="button">Map<br>Ping</button>
+            <span class="command-group" data-command-group="hero">Hero</span>
+            <button id="hero-ability" data-command-button="hero" type="button">Hero<br>Power</button>
             <span class="command-group" data-command-group="basic-build">Basic Builds</span>
             <button id="build-supply" data-command-button="basic-build" type="button">Build<br>Supply</button>
             <button id="build-base" data-command-button="basic-build" type="button">Build<br>Base</button>
@@ -88,6 +92,8 @@
             <button id="train-soldier" data-command-button="barracks" type="button">Train<br>Army</button>
             <button id="train-heavy" data-command-button="barracks" type="button">Train<br>Heavy</button>
             <button id="train-elite" data-command-button="barracks" type="button">Train<br>Elite</button>
+            <button id="train-support" data-command-button="barracks" type="button">Train<br>Support</button>
+            <button id="train-flyer" data-command-button="barracks" type="button">Train<br>Flyer</button>
             <span class="command-group" data-command-group="heavy-tech">Heavy Tech</span>
             <button id="train-extra-heavy" data-command-button="heavy-tech" type="button">Train<br>Extra Heavy</button>
             <span class="command-group" data-command-group="tower">Defence Tower</span>
@@ -113,6 +119,15 @@
         <p class="score-kicker">Match Complete</p>
         <h1 id="score-title">Victory</h1>
         <p id="score-summary">The meadow is yours.</p>
+        <p id="score-record" class="score-record"></p>
+        <div class="campaign-reward" id="campaign-reward" hidden>
+          <strong>Choose a reward for the next mission</strong>
+          <div>
+            <button type="button" data-campaign-reward="shield">Dream Shields</button>
+            <button type="button" data-campaign-reward="supplies">Rescue Supplies</button>
+            <button type="button" data-campaign-reward="training">Veteran Training</button>
+          </div>
+        </div>
         <div class="score-grid">
           <div><span id="score-time">0:00</span><small>Match Time</small></div>
           <div><span id="score-units">0</span><small>Units Created</small></div>
@@ -125,6 +140,7 @@
         </div>
         <div class="score-actions">
           <a href="./index.html">Back to Lobby</a>
+          <button id="score-review" type="button">Review Battlefield</button>
           <button id="score-spectate" type="button" hidden>Spectate</button>
           <button id="score-rematch" type="button">Play Again</button>
         </div>

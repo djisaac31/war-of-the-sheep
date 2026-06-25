@@ -656,6 +656,11 @@ button:focus-visible {
   margin-top: 16px;
 }
 
+.campaign-difficulty {
+  min-width: min(230px, 100%);
+  text-align: left;
+}
+
 .campaign-select {
   display: grid;
   gap: 10px;

@@ -27,6 +27,7 @@
   const tutorialHost = document.querySelector("#tutorial-host");
   const storyStart = document.querySelector("#story-start");
   const campaignSelect = document.querySelector("#campaign-select");
+  const storyDifficulty = document.querySelector("#story-difficulty");
 
   let activeRoom = null;
   let serverOnline = false;
@@ -574,6 +575,7 @@
 
   function launchStoryChapter(chapter) {
     const safeChapter = Math.max(1, Math.min(5, Number(chapter) || 1));
+    const difficulty = storyDifficulty ? storyDifficulty.value : (localStorage.getItem("magic-sheep-story-difficulty") || "normal");
     const code = makeRoomCode();
     const room = {
       code,
@@ -582,7 +584,7 @@
       training: true,
       story: true,
       storyChapter: safeChapter,
-      difficulty: "normal",
+      difficulty,
       createdAt: new Date().toISOString(),
       players: [
         {
@@ -604,9 +606,10 @@
     saveRoom(room);
     renderRoom(room);
     localStorage.setItem("magic-sheep-story-chapter", String(safeChapter));
+    localStorage.setItem("magic-sheep-story-difficulty", difficulty);
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
     status.textContent = "Story campaign mission " + safeChapter + " ready.";
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + safeChapter;
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + safeChapter + "&difficulty=" + encodeURIComponent(difficulty);
   }
 
   function renderCampaignProgress() {
@@ -620,6 +623,13 @@
   storyStart.addEventListener("click", function () {
     launchStoryChapter(localStorage.getItem("magic-sheep-story-chapter") || 1);
   });
+
+  if (storyDifficulty) {
+    storyDifficulty.value = localStorage.getItem("magic-sheep-story-difficulty") || "normal";
+    storyDifficulty.addEventListener("change", function () {
+      localStorage.setItem("magic-sheep-story-difficulty", storyDifficulty.value);
+    });
+  }
 
   if (campaignSelect) {
     campaignSelect.addEventListener("click", function (event) {
@@ -695,6 +705,7 @@
             map: chosenMap,
             maxPlayers,
             matchType: chosenMatchType,
+            difficulty: formData.get("hostAiDifficulty") || "normal",
             player: {
               name: formData.get("hostName") || "Host Shepherd",
               faction: getSelectedValue(hostForm, "hostFaction"),
@@ -725,7 +736,7 @@
       maxPlayers,
       matchType: chosenMatchType,
       training: false,
-      difficulty: "human",
+      difficulty: formData.get("hostAiDifficulty") || "normal",
       createdAt: new Date().toISOString(),
       players: [
         {

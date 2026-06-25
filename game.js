@@ -42,6 +42,9 @@
     scoreResources: document.querySelector("#score-resources"),
     scoreWorkers: document.querySelector("#score-workers"),
     scoreArmy: document.querySelector("#score-army"),
+    scoreRecord: document.querySelector("#score-record"),
+    scoreReview: document.querySelector("#score-review"),
+    campaignReward: document.querySelector("#campaign-reward"),
     scoreSpectate: document.querySelector("#score-spectate"),
     scoreRematch: document.querySelector("#score-rematch"),
     title: document.querySelector("#selection-title"),
@@ -50,11 +53,16 @@
     soldier: document.querySelector("#train-soldier"),
     heavy: document.querySelector("#train-heavy"),
     elite: document.querySelector("#train-elite"),
+    support: document.querySelector("#train-support"),
+    flyer: document.querySelector("#train-flyer"),
     extraHeavy: document.querySelector("#train-extra-heavy"),
     move: document.querySelector("#unit-move"),
     stop: document.querySelector("#unit-stop"),
     hold: document.querySelector("#unit-hold"),
     patrol: document.querySelector("#unit-patrol"),
+    formation: document.querySelector("#unit-formation"),
+    ping: document.querySelector("#map-ping"),
+    heroAbility: document.querySelector("#hero-ability"),
     base: document.querySelector("#build-base"),
     supply: document.querySelector("#build-supply"),
     production: document.querySelector("#build-production"),
@@ -86,6 +94,8 @@
   const selected = new Set();
   let placement = null;
   let commandMode = null;
+  let formationMode = "box";
+  let audioContext = null;
   let last = performance.now();
   let nextId = 1;
   let aiTimer = 0;
@@ -143,6 +153,8 @@
       soldier: "Gleamling",
       heavy: "Prism Guard",
       elite: "Rainbow Colossus",
+      support: "Rainbow Adept",
+      flyer: "Sky Hopper",
       extraHeavy: "Wool Immortal",
       heavyTech: "Prism Citadel",
       base: "Rainbow Tree",
@@ -158,6 +170,8 @@
       soldier: "Bolt Lamb",
       heavy: "Gear Ram",
       elite: "Candy Tank",
+      support: "Medic Ewe",
+      flyer: "Wool Fighter",
       extraHeavy: "Thunder Ram",
       heavyTech: "Machine Yard",
       base: "Candy Command Barn",
@@ -173,6 +187,8 @@
       soldier: "Sparkling",
       heavy: "Iron Ram",
       elite: "Inferno Titan",
+      support: "Ember Archer",
+      flyer: "Ember Bat",
       extraHeavy: "Elder Ember",
       heavyTech: "Ancient Flame Ewe",
       base: "Mother Ember",
@@ -188,6 +204,8 @@
       soldier: "Prowler Wolf",
       heavy: "Fang Bruiser",
       elite: "Howl Alpha",
+      support: "Moon Shaman",
+      flyer: "Wing Wolf",
       extraHeavy: "Moonfang Beast",
       heavyTech: "Moon Howl Lair",
       base: "Wolf Den",
@@ -202,6 +220,8 @@
     soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, role: "Scout ranged unit" },
     heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, role: "Tank with splash damage" },
     elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, role: "Elite siege unit" },
+    support: { hp: 82, speed: 82, radius: 20, damage: 0, range: 155, cooldown: 1.1, wool: 3, vision: 390, heal: 13, role: "Healing support unit" },
+    flyer: { hp: 112, speed: 125, radius: 23, damage: 13, range: 145, cooldown: 0.9, wool: 4, vision: 440, airborne: true, role: "Flying scout and raider" },
     extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, role: "Extra heavy ground breaker" },
     base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560 },
     supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0 },
@@ -217,6 +237,8 @@
     soldier: { l: 0, m: 75 },
     heavy: { l: 35, m: 110 },
     elite: { l: 80, m: 130 },
+    support: { l: 30, m: 95 },
+    flyer: { l: 55, m: 125 },
     extraHeavy: { l: 150, m: 260 },
     base: { l: 0, m: 300 },
     supply: { l: 0, m: 95 },
@@ -230,13 +252,15 @@
     factionTech: { l: 70, m: 150 }
   };
 
-  const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, extraHeavy: 34 };
+  const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, support: 17, flyer: 21, extraHeavy: 34 };
   const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28 };
   const commandTooltipTypes = {
     worker: { label: "Train Worker", type: "worker", time: trainTimes.worker, mode: "Train" },
     soldier: { label: "Train Army", type: "soldier", time: trainTimes.soldier, mode: "Train" },
     heavy: { label: "Train Heavy", type: "heavy", time: trainTimes.heavy, mode: "Train" },
     elite: { label: "Train Elite", type: "elite", time: trainTimes.elite, mode: "Train" },
+    support: { label: "Train Support", type: "support", time: trainTimes.support, mode: "Train" },
+    flyer: { label: "Train Flyer", type: "flyer", time: trainTimes.flyer, mode: "Train" },
     extraHeavy: { label: "Train Extra Heavy", type: "extraHeavy", time: trainTimes.extraHeavy, mode: "Train" },
     base: { label: "Build Base", type: "base", time: buildTimes.base, mode: "Build" },
     supply: { label: "Build Supply", type: "supply", time: buildTimes.supply, mode: "Build" },
@@ -258,9 +282,11 @@
     unloadTower: "Unload Worker: remove the worker from this Defence Tower."
   };
   const aiProfiles = {
-    easy: { think: 20, drip: 0.45, burst: 14, gasDelay: 155, gas: 2, caps: [1, 3, 5], waveDelay: 190, waveCooldown: 78, waveSize: 4, heavyDelay: 205, heavyChance: 0.88 },
-    normal: { think: 16, drip: 0.8, burst: 22, gasDelay: 120, gas: 3, caps: [2, 4, 7], waveDelay: 165, waveCooldown: 64, waveSize: 5, heavyDelay: 175, heavyChance: 0.8 },
-    hard: { think: 12, drip: 1.12, burst: 32, gasDelay: 100, gas: 5, caps: [3, 5, 8], waveDelay: 140, waveCooldown: 52, waveSize: 6, heavyDelay: 155, heavyChance: 0.72 }
+    story: { think: 23, drip: 0.35, burst: 10, gasDelay: 175, gas: 1, caps: [1, 3, 5], waveDelay: 205, waveCooldown: 88, waveSize: 3, heavyDelay: 225, heavyChance: 0.92, health: 0.85, damage: 0.82 },
+    easy: { think: 20, drip: 0.45, burst: 14, gasDelay: 155, gas: 2, caps: [1, 3, 5], waveDelay: 190, waveCooldown: 78, waveSize: 4, heavyDelay: 205, heavyChance: 0.88, health: 0.92, damage: 0.9 },
+    normal: { think: 16, drip: 0.8, burst: 22, gasDelay: 120, gas: 3, caps: [2, 4, 7], waveDelay: 165, waveCooldown: 64, waveSize: 5, heavyDelay: 175, heavyChance: 0.8, health: 1, damage: 1 },
+    hard: { think: 12, drip: 1.12, burst: 32, gasDelay: 100, gas: 5, caps: [3, 5, 8], waveDelay: 140, waveCooldown: 52, waveSize: 6, heavyDelay: 155, heavyChance: 0.72, health: 1.16, damage: 1.12 },
+    nightmare: { think: 9, drip: 1.4, burst: 38, gasDelay: 82, gas: 6, caps: [4, 7, 10], waveDelay: 118, waveCooldown: 43, waveSize: 8, heavyDelay: 132, heavyChance: 0.62, health: 1.3, damage: 1.25 }
   };
   const aiProfile = aiProfiles[aiDifficulty] || aiProfiles.normal;
   const mapProfiles = {
@@ -364,6 +390,7 @@
     finalWaveSent: false,
     finalWaveHeld: false,
     elderJoined: false,
+    bossPhases: new Set(),
     missions: []
   };
   story.missions = storyMissionsForChapter(storyChapter);
@@ -852,8 +879,14 @@
       heroName: null,
       storySpecial: null,
       damageBonus: 0,
-      rangeBonus: 0
+      rangeBonus: 0,
+      heroAbilityCooldown: 0
     };
+    if (owner === "enemy" && (storyMode || roomSettings.training)) {
+      unit.maxHp = Math.round(unit.maxHp * aiProfile.health);
+      unit.hp = unit.maxHp;
+      unit.damageBonus += Math.round((s.damage || 0) * (aiProfile.damage - 1));
+    }
     state.units.push(unit);
     if (state.setupComplete && owner === "player") state.stats.unitsCreated += 1;
     return unit;
@@ -989,6 +1022,7 @@
       addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
     }
     addExpansionResources();
+    if (storyMode) applyCampaignRewards();
 
     const starts = startPositionsForPlayers((roomSettings.players || []).length || 2);
     const cameraStart = storyMode
@@ -1008,6 +1042,33 @@
     } else {
       say("You are commanding " + factionData[pf].name + " on " + (roomSettings.map || "Candy Meadow") + ". Gather Marshmallows, then build a Lollipop Extractor.");
     }
+  }
+
+  function applyCampaignRewards() {
+    let rewards = {};
+    try {
+      rewards = JSON.parse(localStorage.getItem("magic-sheep-story-rewards") || "{}");
+    } catch (_error) {
+      rewards = {};
+    }
+    Object.keys(rewards).forEach((chapter) => {
+      if (Number(chapter) >= storyChapter) return;
+      const reward = rewards[chapter];
+      if (reward === "shield") {
+        state.units.filter((unit) => unit.owner === "player").forEach((unit) => {
+          unit.maxHp += 18;
+          unit.hp += 18;
+        });
+      } else if (reward === "supplies") {
+        state.player.marshmallows += 90;
+        state.player.lollipops += 35;
+      } else if (reward === "training") {
+        state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").forEach((unit) => {
+          unit.damageBonus += 3;
+          unit.speedBonus = Math.max(unit.speedBonus || 1, 1.06);
+        });
+      }
+    });
   }
 
   function spawnStoryMission(playerStart, enemyStart) {
@@ -1328,7 +1389,7 @@
     alpha.storyTag = "wolfAlpha";
     alpha.maxHp *= 1.35;
     alpha.hp = alpha.maxHp;
-    alpha.damage += 10;
+    alpha.damageBonus += 10;
 
     camera.x = Math.max(0, Math.min(world.w - camera.w, rally.x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, rally.y - camera.h / 2));
@@ -1613,6 +1674,28 @@
       showStoryCutscene("finalWave");
       updateTutorial(true);
     }
+    updateWolfAlphaBoss();
+  }
+
+  function updateWolfAlphaBoss() {
+    const alpha = state.units.find((unit) => unit.storyTag === "wolfAlpha");
+    const playerBase = state.structures.find((structure) => structure.owner === "player" && structure.type === "base");
+    if (!alpha || !playerBase) return;
+    const healthRatio = alpha.hp / alpha.maxHp;
+    [
+      { key: "alpha-75", threshold: 0.75, units: ["soldier", "soldier", "heavy"], message: "Wolf Alpha howls. A prowler pack joins the battle." },
+      { key: "alpha-45", threshold: 0.45, units: ["heavy", "heavy", "elite"], message: "Wolf Alpha enters a moonrage and calls the Moonfang guard." },
+      { key: "alpha-20", threshold: 0.2, units: ["soldier", "elite", "extraHeavy"], message: "Wolf Alpha makes a final desperate howl." }
+    ].forEach((phase) => {
+      if (healthRatio > phase.threshold || story.bossPhases.has(phase.key)) return;
+      story.bossPhases.add(phase.key);
+      alpha.speedBonus = Math.max(alpha.speedBonus || 1, 1 + story.bossPhases.size * 0.08);
+      alpha.damageBonus += 4;
+      spawnWolfWave(alpha.x - 90, alpha.y + 80, playerBase.x, playerBase.y, phase.units, "alphaGuard");
+      state.effects.push({ x: alpha.x, y: alpha.y, r: 22, life: 1.5, color: "#d94b42", kind: "ping", label: "HOWL" });
+      playEffectTone(170, 0.42, 0.07);
+      say(phase.message);
+    });
   }
 
   function say(text) {
@@ -1741,7 +1824,7 @@
   }
 
   function tooltipText(config) {
-    const label = config.type === "soldier" || config.type === "heavy" || config.type === "elite" || config.type === "extraHeavy" || config.type === "worker"
+    const label = ["soldier", "heavy", "elite", "support", "flyer", "extraHeavy", "worker"].includes(config.type)
       ? config.label + " (" + unitLabel(config.type, state.player.faction) + ")"
       : config.label;
     const timeText = config.time ? "\nTime: " + config.time + "s" : "";
@@ -1802,6 +1885,8 @@
       ["soldier", ui.soldier],
       ["heavy", ui.heavy],
       ["elite", ui.elite],
+      ["support", ui.support],
+      ["flyer", ui.flyer],
       ["extraHeavy", ui.extraHeavy],
       ["base", ui.base],
       ["supply", ui.supply],
@@ -1818,6 +1903,9 @@
     setButtonTooltip(ui.move, commandHelpText.move);
     setButtonTooltip(ui.hold, commandHelpText.hold);
     setButtonTooltip(ui.patrol, commandHelpText.patrol);
+    setButtonTooltip(ui.formation, "Formation (F): cycle Box, Line, and Spread movement.");
+    setButtonTooltip(ui.ping, "Map Ping (G): mark a location for teammates.");
+    setButtonTooltip(ui.heroAbility, "Hero Power (Q): use the selected hero's unique ability.");
     setButtonTooltip(ui.ability, commandHelpText.ability + "\nCurrent: " + factionData[state.player.faction].ability);
     setButtonTooltip(ui.unloadTower, commandHelpText.unloadTower);
     wireCommandTooltipEvents();
@@ -1840,6 +1928,14 @@
     }
     if (type === "elite" && !readyStructure("forge", owner)) {
       if (owner === "player") say("Build a Forge to unlock elite units.");
+      return;
+    }
+    if (type === "support" && !readyStructure("forge", owner)) {
+      if (owner === "player") say("Build a Forge to unlock support units.");
+      return;
+    }
+    if (type === "flyer" && !readyStructure("heavyTech", owner)) {
+      if (owner === "player") say("Build Heavy Tech to unlock flying units.");
       return;
     }
     if (!spend(type, owner)) return;
@@ -1878,6 +1974,8 @@
     if (type === "worker") return f.worker;
     if (type === "heavy") return f.heavy;
     if (type === "elite") return f.elite;
+    if (type === "support") return f.support;
+    if (type === "flyer") return f.flyer;
     if (type === "extraHeavy") return f.extraHeavy;
     return f.soldier;
   }
@@ -2117,6 +2215,7 @@
     structure.buildProgress = structure.buildTime;
     structure.hp = structure.maxHp;
     if (structure.owner === "player") {
+      playEffectTone(520, 0.18, 0.04);
       state.stats.structuresBuilt += 1;
       if (structure.type === "supply") state.player.woolMax += 8;
       if (structure.type === "supply") say("Supply building complete.");
@@ -2275,6 +2374,89 @@
     }
   }
 
+  function playEffectTone(frequency, duration = 0.08, volume = 0.035) {
+    try {
+      audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "triangle";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(volume, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + duration);
+    } catch (_error) {
+      // Browser audio is optional and may be blocked before the first interaction.
+    }
+  }
+
+  function cycleFormation() {
+    const modes = ["box", "line", "spread"];
+    formationMode = modes[(modes.indexOf(formationMode) + 1) % modes.length];
+    ui.formation.innerHTML = "Formation<br>" + formationMode[0].toUpperCase() + formationMode.slice(1);
+    playEffectTone(440);
+    say(formationMode[0].toUpperCase() + formationMode.slice(1) + " formation selected.");
+  }
+
+  function issuePing(wx, wy, owner = "player") {
+    const color = ownersAreAllied("player", owner) ? "#7cff9a" : "#ff705d";
+    state.effects.push({ x: wx, y: wy, r: 12, life: 2.4, color, kind: "ping", label: owner === "player" ? "PING" : "ALLY" });
+    playEffectTone(760, 0.16, 0.05);
+  }
+
+  function castHeroAbility(owner = "player", heroIds = []) {
+    const heroes = state.units.filter((unit) => unit.owner === owner && unit.heroName && (!heroIds.length || heroIds.includes(unit.id)));
+    const hero = heroes[0];
+    if (!hero) {
+      if (owner === "player") say("Select a hero first.");
+      return;
+    }
+    if (hero.heroAbilityCooldown > 0) {
+      if (owner === "player") say(hero.heroName + "'s power is ready in " + Math.ceil(hero.heroAbilityCooldown) + " seconds.");
+      return;
+    }
+    hero.heroAbilityCooldown = 28;
+    const nearbyAllies = state.units.filter((unit) => !isHostileTo(owner, unit, hero.playerIndex) && Math.hypot(unit.x - hero.x, unit.y - hero.y) < 250);
+    const nearbyEnemies = attackTargetsFor(owner, hero.playerIndex).filter((entity) => Math.hypot(entity.x - hero.x, entity.y - hero.y) < 250);
+    if (/Derek/i.test(hero.heroName)) {
+      nearbyAllies.forEach((unit) => {
+        unit.hp = Math.min(unit.maxHp + 20, unit.hp + 55);
+      });
+      burst(hero.x, hero.y, "#d8c4ff");
+      say("Derek casts Dream Shield.");
+    } else if (/Fern/i.test(hero.heroName)) {
+      nearbyAllies.forEach((unit) => {
+        unit.cooldown = 0;
+        unit.speedBonus = Math.max(unit.speedBonus || 1, 1.2);
+      });
+      burst(hero.x, hero.y, "#8de7b5");
+      say("Fiddler Fern rallies the rescue flock.");
+    } else if (/Whisp/i.test(hero.heroName)) {
+      nearbyEnemies.forEach((enemy) => {
+        enemy.hp -= damageAfterArmor(42, enemy);
+        enemy.hitFlash = 0.2;
+      });
+      burst(hero.x, hero.y, "#9ed8ff");
+      say("Whisp releases a starlight pulse.");
+    } else if (/Bluebell/i.test(hero.heroName)) {
+      nearbyEnemies.forEach((enemy) => {
+        if (enemy.kind === "unit") enemy.cooldown = Math.max(enemy.cooldown || 0, 3.5);
+        enemy.hp -= damageAfterArmor(22, enemy);
+      });
+      burst(hero.x, hero.y, "#8dd5ef");
+      say("Old Bluebell rings the freezing bell.");
+    } else {
+      nearbyAllies.forEach((unit) => {
+        unit.hp = Math.min(unit.maxHp, unit.hp + 35);
+      });
+      burst(hero.x, hero.y, "#fff47a");
+      say(hero.heroName + " restores the nearby flock.");
+    }
+    playEffectTone(620, 0.24, 0.055);
+  }
+
   function ownerForRoomPlayerIndex(playerIndex) {
     if (playerIndex === localPlayerIndex()) return "player";
     return roomPlayersAllied(localPlayerIndex(), playerIndex) ? "ally" : "enemy";
@@ -2314,6 +2496,10 @@
       assignBuildTask(worker, type, geyser ? geyser.x : x, geyser ? geyser.y : y, geyser ? geyser.id : command.resourceId || null);
     } else if (command.action === "ability") {
       castAbility(owner);
+    } else if (command.action === "heroAbility") {
+      castHeroAbility(owner, command.unitIds || []);
+    } else if (command.action === "ping") {
+      issuePing(Number(command.x), Number(command.y), owner);
     }
   }
 
@@ -2706,6 +2892,14 @@
   }
 
   function formationOffset(index, total) {
+    if (formationMode === "line") {
+      return { x: (index - (total - 1) / 2) * 44, y: 0 };
+    }
+    if (formationMode === "spread") {
+      const angle = (index / Math.max(1, total)) * Math.PI * 2;
+      const radius = 42 + Math.floor(index / 8) * 34;
+      return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    }
     const columns = Math.ceil(Math.sqrt(total));
     const row = Math.floor(index / columns);
     const col = index % columns;
@@ -2914,6 +3108,7 @@
 
   function updateUnit(unit, dt) {
     unit.cooldown = Math.max(0, unit.cooldown - dt);
+    unit.heroAbilityCooldown = Math.max(0, (unit.heroAbilityCooldown || 0) - dt);
     if (unit.garrisonedIn) {
       const tower = state.structures.find((structure) => structure.id === unit.garrisonedIn);
       if (!tower) unit.garrisonedIn = null;
@@ -3046,12 +3241,14 @@
     const d = Math.hypot(dx, dy);
     if (speed && d > 4) {
       const step = Math.min(d, speed * dt);
-      const next = smartMoveStep(unit, dx, dy, d, step);
+      const next = stats[unit.type].airborne
+        ? { x: unit.x + (dx / d) * step, y: unit.y + (dy / d) * step }
+        : smartMoveStep(unit, dx, dy, d, step);
       unit.x = next.x;
       unit.y = next.y;
       unit.x = Math.max(30, Math.min(world.w - 30, unit.x));
       unit.y = Math.max(30, Math.min(world.h - 30, unit.y));
-      pushUnitOutOfBuildings(unit);
+      if (!stats[unit.type].airborne) pushUnitOutOfBuildings(unit);
     } else if (unit.attackMove && !unit.target && unit.attackX !== null && unit.attackY !== null) {
       if (unit.patrol) {
         unit.patrol.toB = !unit.patrol.toB;
@@ -3084,6 +3281,18 @@
       if (unit.garrisonedIn) return;
       if (unit.noAttack) return;
       const s = stats[unit.type];
+      if (s.heal) {
+        const patient = state.units
+          .filter((ally) => ally.id !== unit.id && !isHostileTo(unit.owner, ally, unit.playerIndex) && ally.hp < ally.maxHp)
+          .filter((ally) => Math.hypot(ally.x - unit.x, ally.y - unit.y) <= s.range)
+          .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+        if (patient && unit.cooldown <= 0) {
+          unit.cooldown = s.cooldown;
+          patient.hp = Math.min(patient.maxHp, patient.hp + s.heal);
+          state.effects.push({ x: patient.x, y: patient.y, r: 5, life: 0.35, color: "#8de7b5", kind: "spark" });
+        }
+        return;
+      }
       const unitDamage = (s.damage || 0) + (unit.damageBonus || 0);
       const unitRange = (s.range || 0) + (unit.rangeBonus || 0);
       if (!unitDamage) return;
@@ -3097,7 +3306,8 @@
       if (d > unitRange + stats[target.type].radius) return;
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
-        target.hp -= damageAfterArmor(unitDamage, target);
+        const antiAirBonus = unit.type === "soldier" && stats[target.type].airborne ? 7 : 0;
+        target.hp -= damageAfterArmor(unitDamage + antiAirBonus, target);
         target.hitFlash = 0.18;
         if (s.splash) applySplashDamage(unit, target, unitDamage * 0.45, s.splash);
         if (unitRange > 55) fireBullet(unit, target, factionData[unit.faction].accent);
@@ -3192,6 +3402,37 @@
     showScoreScreen(result);
   }
 
+  function saveMatchRecord(result) {
+    const record = {
+      result,
+      time: Math.floor(state.elapsed),
+      unitsCreated: state.stats.unitsCreated,
+      unitsLost: state.stats.unitsLost,
+      enemiesDestroyed: state.stats.enemiesDestroyed,
+      resources: state.stats.marshmallowsGathered,
+      difficulty: aiDifficulty,
+      chapter: storyMode ? storyChapter : null,
+      playedAt: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem("magic-sheep-last-match", JSON.stringify(record));
+      if (storyMode && result === "victory") {
+        const records = JSON.parse(localStorage.getItem("magic-sheep-story-records") || "{}");
+        const old = records[storyChapter];
+        if (!old || record.time < old.time || difficultyRank(aiDifficulty) > difficultyRank(old.difficulty)) records[storyChapter] = record;
+        localStorage.setItem("magic-sheep-story-records", JSON.stringify(records));
+        localStorage.setItem("magic-sheep-story-chapter", String(Math.min(5, storyChapter + 1)));
+      }
+    } catch (_error) {
+      // The match still completes when browser storage is unavailable.
+    }
+    return record;
+  }
+
+  function difficultyRank(value) {
+    return ["story", "easy", "normal", "hard", "nightmare"].indexOf(value);
+  }
+
   function showScoreScreen(result) {
     ui.music.pause();
     ui.music.currentTime = 0;
@@ -3207,6 +3448,7 @@
         ? "Derek and the Rainbow Sheep broke the Wolf Den and saved the magic sheep."
         : "The Wolf Pack overran the meadow. Rebuild the flock and try again.";
     }
+    if (ui.campaignReward) ui.campaignReward.hidden = !(storyMode && result === "victory" && storyChapter < 5);
     ui.scoreTime.textContent = formatTime(state.elapsed);
     ui.scoreUnits.textContent = state.stats.unitsCreated;
     ui.scoreLost.textContent = state.stats.unitsLost;
@@ -3215,6 +3457,12 @@
     ui.scoreResources.textContent = state.stats.marshmallowsGathered;
     ui.scoreWorkers.textContent = state.units.filter((u) => u.owner === "player" && u.type === "worker").length;
     ui.scoreArmy.textContent = state.units.filter((u) => u.owner === "player" && u.type !== "worker").length;
+    const record = saveMatchRecord(result);
+    if (ui.scoreRecord) {
+      ui.scoreRecord.textContent = storyMode
+        ? "Mission " + storyChapter + " record saved on " + aiDifficulty.toUpperCase() + " difficulty."
+        : "Match review saved: " + record.enemiesDestroyed + " enemies destroyed in " + formatTime(record.time) + ".";
+    }
     ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
     if (storyMode) {
       ui.scoreRematch.textContent = result === "victory" && storyChapter < 5 ? "Next Mission" : result === "victory" ? "Back to Lobby" : "Try Again";
@@ -3277,7 +3525,7 @@
       training: true,
       story: true,
       storyChapter: chapter,
-      difficulty: "normal",
+      difficulty: aiDifficulty,
       createdAt: new Date().toISOString(),
       players: [
         { name: "Derek", faction: "Rainbow Sheep", host: true },
@@ -3288,7 +3536,8 @@
     rooms[code] = room;
     localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
     localStorage.setItem("magic-sheep-story-chapter", String(chapter));
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + chapter;
+    localStorage.setItem("magic-sheep-story-difficulty", aiDifficulty);
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + chapter + "&difficulty=" + encodeURIComponent(aiDifficulty);
   }
 
   async function startMatchMusic() {
@@ -3349,11 +3598,13 @@
     if (side.marshmallows >= 75 && enemyArmy.length < armyCap) {
       heavyTech = state.structures.find((s) => s.owner === owner && s.type === "heavyTech" && !s.underConstruction);
       const canExtraHeavy = heavyTech && state.elapsed > aiProfile.heavyDelay + 120 && side.lollipops >= costs.extraHeavy.l && side.marshmallows >= costs.extraHeavy.m && Math.random() > 0.86;
-      const type = canExtraHeavy ? "extraHeavy" : state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
+      const needsSupport = state.elapsed > 190 && !enemyArmy.some((unit) => unit.type === "support") && side.lollipops >= costs.support.l && side.marshmallows >= costs.support.m;
+      const canFly = heavyTech && state.elapsed > aiProfile.heavyDelay + 45 && side.lollipops >= costs.flyer.l && side.marshmallows >= costs.flyer.m && Math.random() > 0.9;
+      const type = canExtraHeavy ? "extraHeavy" : needsSupport ? "support" : canFly ? "flyer" : state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
       if (side.lollipops >= costs[type].l && side.marshmallows >= costs[type].m) {
         side.lollipops -= costs[type].l;
         side.marshmallows -= costs[type].m;
-        const producer = type === "extraHeavy" ? heavyTech : production;
+        const producer = type === "extraHeavy" || type === "flyer" ? heavyTech : production;
         const unit = addUnit(owner, producer.faction, type, producer.x - 60, producer.y + (Math.random() - 0.5) * 90, producer.playerIndex ?? base.playerIndex);
         unit.tx = producer.x - 120 + Math.random() * 70;
         unit.ty = producer.y - 90 + Math.random() * 180;
@@ -3795,7 +4046,7 @@
 
   function unitSpriteCrop(e) {
     const rows = { rainbow: 0, mech: 1, fire: 2 };
-    const cols = { worker: 0, soldier: 1, heavy: 2, elite: 3, extraHeavy: 3 };
+    const cols = { worker: 0, soldier: 1, support: 1, heavy: 2, flyer: 2, elite: 3, extraHeavy: 3 };
     const cell = 256;
     return {
       x: (cols[e.type] || 0) * cell,
@@ -3929,6 +4180,22 @@
       ctx.moveTo(e.x + e.r + 8, e.y - e.r - 8);
       ctx.lineTo(e.x - e.r - 8, e.y + e.r + 8);
       ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (e.kind === "ping") {
+      const pulse = 1 + Math.sin(state.elapsed * 9) * 0.18;
+      ctx.save();
+      ctx.strokeStyle = e.color;
+      ctx.fillStyle = e.color;
+      ctx.globalAlpha = Math.min(1, e.life);
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * pulse + 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = "900 15px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(e.label || "PING", e.x, e.y - 34);
       ctx.restore();
       return;
     }
@@ -4105,7 +4372,7 @@
     const hasForge = Boolean(readyStructure("forge"));
     const hasHeavyTech = Boolean(readyStructure("heavyTech"));
     if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
-      showCommandGroups(["unit", "basic-build", "advanced-build"]);
+      showCommandGroups(first.heroName ? ["unit", "hero"] : ["unit", "basic-build", "advanced-build"]);
       ui.move.disabled = false;
       ui.stop.disabled = false;
       ui.hold.disabled = false;
@@ -4117,6 +4384,7 @@
       ui.extractor.disabled = !hasBarracks;
       ui.forge.disabled = !hasBarracks;
       ui.heavyTech.disabled = !hasBarracks;
+      if (first.heroName) ui.heroAbility.disabled = first.heroAbilityCooldown > 0;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "base") {
       showCommandGroups(["base"]);
       ui.worker.disabled = false;
@@ -4126,6 +4394,8 @@
       ui.soldier.disabled = false;
       ui.heavy.disabled = false;
       ui.elite.disabled = !hasForge;
+      ui.support.disabled = !hasForge;
+      ui.flyer.disabled = !hasHeavyTech;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "heavyTech") {
       showCommandGroups(["heavy-tech"]);
       ui.extraHeavy.disabled = false;
@@ -4138,11 +4408,14 @@
       ui.eliteArmor.disabled = !upgrades.armor.researched || upgrades.eliteArmor.researched || upgrades.eliteArmor.inProgress;
       ui.factionTech.disabled = upgrades.factionTech.researched || upgrades.factionTech.inProgress;
     } else if (!first.underConstruction && first.kind === "unit") {
-      showCommandGroups(["unit"]);
+      showCommandGroups(first.heroName ? ["unit", "hero"] : ["unit"]);
       ui.move.disabled = false;
       ui.stop.disabled = false;
       ui.hold.disabled = false;
       ui.patrol.disabled = false;
+      ui.formation.disabled = false;
+      ui.ping.disabled = false;
+      if (first.heroName) ui.heroAbility.disabled = first.heroAbilityCooldown > 0;
     }
     ui.title.textContent = picked.length === 1 ? label : picked.length + " selected";
     if (first.underConstruction) {
@@ -4168,7 +4441,7 @@
     } else if (first.kind === "structure" && first.type === "forge") {
       ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else if (first.heroName) {
-      ui.copy.textContent = first.storySpecial + ". Keep this hero alive and use attack-move with the rescue flock.";
+      ui.copy.textContent = first.storySpecial + ". Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
@@ -4231,6 +4504,13 @@
       issuePatrol(p.wx, p.wy);
       return;
     }
+    if (event.button === 0 && commandMode === "ping") {
+      issuePing(p.wx, p.wy);
+      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy });
+      commandMode = null;
+      say("Map ping sent.");
+      return;
+    }
     mouse.down = true;
     mouse.sx = p.x;
     mouse.sy = p.y;
@@ -4275,6 +4555,7 @@
       const y2 = Math.max(mouse.sy, mouse.y) + camera.y;
       state.units.filter((u) => u.owner === "player" && u.x >= x1 && u.x <= x2 && u.y >= y1 && u.y <= y2).forEach((u) => selected.add(u.id));
     }
+    if (selected.size) playEffectTone(330, 0.055, 0.025);
   });
 
   mini.addEventListener("click", (event) => {
@@ -4375,6 +4656,12 @@
     if (commandMode === "move") return issueCommand(p.wx, p.wy);
     if (commandMode === "attack") return issueAttackMove(p.wx, p.wy);
     if (commandMode === "patrol") return issuePatrol(p.wx, p.wy);
+    if (commandMode === "ping") {
+      issuePing(p.wx, p.wy);
+      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy });
+      commandMode = null;
+      return;
+    }
     selected.clear();
     const hit = selectableAt(p.wx, p.wy);
     if (hit) selected.add(hit.id);
@@ -4405,6 +4692,24 @@
       commandMode = "patrol";
       event.preventDefault();
       say("Patrol: click the other end of the route.");
+      return;
+    }
+    if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      cycleFormation();
+      return;
+    }
+    if ((event.key === "g" || event.key === "G") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      commandMode = "ping";
+      say("Map ping: click a location for your team.");
+      return;
+    }
+    if ((event.key === "q" || event.key === "Q") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      const ids = state.units.filter((unit) => selected.has(unit.id) && unit.heroName).map((unit) => unit.id);
+      if (isNetworkGuest) sendNetworkCommand({ action: "heroAbility", unitIds: ids });
+      else castHeroAbility("player", ids);
       return;
     }
     if ((event.key === "s" || event.key === "S") && !event.ctrlKey && !event.metaKey) {
@@ -4460,6 +4765,16 @@
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "elite" });
     else queueTraining("elite");
   });
+  ui.support.addEventListener("click", () => {
+    startMatchMusic();
+    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "support" });
+    else queueTraining("support");
+  });
+  ui.flyer.addEventListener("click", () => {
+    startMatchMusic();
+    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "flyer" });
+    else queueTraining("flyer");
+  });
   ui.extraHeavy.addEventListener("click", () => {
     startMatchMusic();
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "extraHeavy" });
@@ -4486,6 +4801,21 @@
     }
     commandMode = "patrol";
     say("Patrol: click the other end of the route.");
+  });
+  ui.formation.addEventListener("click", () => {
+    startMatchMusic();
+    cycleFormation();
+  });
+  ui.ping.addEventListener("click", () => {
+    startMatchMusic();
+    commandMode = "ping";
+    say("Map ping: click a location for your team.");
+  });
+  ui.heroAbility.addEventListener("click", () => {
+    startMatchMusic();
+    const ids = state.units.filter((unit) => selected.has(unit.id) && unit.heroName).map((unit) => unit.id);
+    if (isNetworkGuest) sendNetworkCommand({ action: "heroAbility", unitIds: ids });
+    else castHeroAbility("player", ids);
   });
   ui.supply.addEventListener("click", () => {
     startMatchMusic();
@@ -4610,6 +4940,27 @@
     selected.clear();
     ui.scoreScreen.hidden = true;
     say("Spectating through allied vision.");
+  });
+  ui.scoreReview.addEventListener("click", () => {
+    spectating = true;
+    selected.clear();
+    ui.scoreScreen.hidden = true;
+    say("Battlefield review. The match is paused at its final state.");
+  });
+  document.querySelectorAll("[data-campaign-reward]").forEach((button) => {
+    button.addEventListener("click", () => {
+      let rewards = {};
+      try {
+        rewards = JSON.parse(localStorage.getItem("magic-sheep-story-rewards") || "{}");
+      } catch (_error) {
+        rewards = {};
+      }
+      rewards[storyChapter] = button.dataset.campaignReward;
+      localStorage.setItem("magic-sheep-story-rewards", JSON.stringify(rewards));
+      document.querySelectorAll("[data-campaign-reward]").forEach((choice) => choice.classList.toggle("is-chosen", choice === button));
+      if (ui.scoreRecord) ui.scoreRecord.textContent = button.textContent + " selected for the next mission.";
+      playEffectTone(580, 0.18, 0.05);
+    });
   });
 
   function loop(now) {
