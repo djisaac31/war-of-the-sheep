@@ -70,6 +70,7 @@
     extractor: document.querySelector("#build-extractor"),
     forge: document.querySelector("#build-forge"),
     heavyTech: document.querySelector("#build-heavy-tech"),
+    hangar: document.querySelector("#build-hangar"),
     armor: document.querySelector("#upgrade-armor"),
     eliteArmor: document.querySelector("#upgrade-elite-armor"),
     factionTech: document.querySelector("#upgrade-faction-tech"),
@@ -89,7 +90,7 @@
 
   const world = { w: 2400, h: 1600 };
   const camera = { x: 0, y: 0, w: 1280, h: 760 };
-  const mouse = { x: 0, y: 0, wx: 0, wy: 0, down: false, sx: 0, sy: 0 };
+  const mouse = { x: 0, y: 0, wx: 0, wy: 0, down: false, sx: 0, sy: 0, swx: 0, swy: 0 };
   const controlGroups = new Map();
   const selected = new Set();
   let placement = null;
@@ -157,6 +158,12 @@
       flyer: "Sky Hopper",
       extraHeavy: "Wool Immortal",
       heavyTech: "Prism Citadel",
+      hangar: "Starlight Sanctuary",
+      production: "Dream Forge",
+      supply: "Rainbow Arch",
+      extractor: "Crystal Meadow",
+      forge: "Rainbow Council",
+      defenseTower: "Prism Tower",
       base: "Rainbow Tree",
       ability: "Prism Burst",
       atlas: [0.02, 0.16, 0.31, 0.74],
@@ -174,6 +181,12 @@
       flyer: "Wool Fighter",
       extraHeavy: "Thunder Ram",
       heavyTech: "Machine Yard",
+      hangar: "Cloud Hangar",
+      production: "Workshop Shed",
+      supply: "Wool Depot",
+      extractor: "Science Pasture",
+      forge: "Engineering Coop",
+      defenseTower: "Bolt Turret",
       base: "Candy Command Barn",
       ability: "Overclock",
       atlas: [0.35, 0.16, 0.31, 0.74],
@@ -191,6 +204,12 @@
       flyer: "Ember Bat",
       extraHeavy: "Elder Ember",
       heavyTech: "Ancient Flame Ewe",
+      hangar: "Ember Nest",
+      production: "Campfire Ram",
+      supply: "Wool Balloon",
+      extractor: "Marshmallow Grazer",
+      forge: "Forgehorn Matron",
+      defenseTower: "Bonfire Shepherd",
       base: "Mother Ember",
       ability: "Warm Wool",
       atlas: [0.68, 0.16, 0.30, 0.74],
@@ -208,6 +227,12 @@
       flyer: "Wing Wolf",
       extraHeavy: "Moonfang Beast",
       heavyTech: "Moon Howl Lair",
+      hangar: "Moonwing Roost",
+      production: "Fang Barracks",
+      supply: "Howl Totem",
+      extractor: "Moonwell",
+      forge: "Claw Forge",
+      defenseTower: "Fang Tower",
       base: "Wolf Den",
       ability: "Howl",
       atlas: [0.02, 0.16, 0.31, 0.74],
@@ -216,20 +241,22 @@
   };
 
   const stats = {
-    worker: { hp: 48, speed: 115, radius: 17, damage: 3, range: 24, cooldown: 0.9, wool: 1 },
-    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, role: "Scout ranged unit" },
-    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, role: "Tank with splash damage" },
-    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, role: "Elite siege unit" },
+    worker: { hp: 48, speed: 115, radius: 17, damage: 3, range: 24, cooldown: 0.9, wool: 1, attackGround: true, attackAir: false },
+    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, attackGround: true, attackAir: true, role: "Ranged anti-ground and anti-air unit" },
+    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, attackGround: true, attackAir: false, role: "Ground-only tank with splash damage" },
+    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, attackGround: true, attackAir: false, role: "Ground-only elite siege unit" },
     support: { hp: 82, speed: 82, radius: 20, damage: 0, range: 155, cooldown: 1.1, wool: 3, vision: 390, heal: 13, role: "Healing support unit" },
-    flyer: { hp: 112, speed: 125, radius: 23, damage: 13, range: 145, cooldown: 0.9, wool: 4, vision: 440, airborne: true, role: "Flying scout and raider" },
-    extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, role: "Extra heavy ground breaker" },
+    flyer: { hp: 112, speed: 125, radius: 23, damage: 13, range: 145, cooldown: 0.9, wool: 4, vision: 440, airborne: true, attackGround: true, attackAir: true, role: "Flying anti-ground and anti-air raider" },
+    extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, attackGround: true, attackAir: false, role: "Ground-only extra heavy breaker" },
     base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560 },
     supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0 },
     production: { hp: 360, speed: 0, radius: 42, damage: 0, range: 0, cooldown: 1, wool: 0 },
     extractor: { hp: 280, speed: 0, radius: 36, damage: 0, range: 0, cooldown: 1, wool: 0 },
     forge: { hp: 320, speed: 0, radius: 39, damage: 0, range: 0, cooldown: 1, wool: 0 },
     heavyTech: { hp: 430, speed: 0, radius: 46, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    defenseTower: { hp: 310, speed: 0, radius: 32, damage: 16, range: 270, cooldown: 0.9, wool: 0, vision: 430 }
+    hangar: { hp: 390, speed: 0, radius: 44, damage: 0, range: 0, cooldown: 1, wool: 0 },
+    defenseTower: { hp: 310, speed: 0, radius: 32, damage: 16, range: 270, cooldown: 0.9, wool: 0, vision: 430, attackGround: true, attackAir: true },
+    wall: { hp: 480, speed: 0, radius: 31, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 80 }
   };
 
   const costs = {
@@ -247,13 +274,14 @@
     extractor: { l: 0, m: 60 },
     forge: { l: 25, m: 125 },
     heavyTech: { l: 85, m: 190 },
+    hangar: { l: 70, m: 175 },
     armor: { l: 45, m: 120 },
     eliteArmor: { l: 95, m: 160 },
     factionTech: { l: 70, m: 150 }
   };
 
   const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, support: 17, flyer: 21, extraHeavy: 34 };
-  const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28 };
+  const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28, hangar: 25 };
   const commandTooltipTypes = {
     worker: { label: "Train Worker", type: "worker", time: trainTimes.worker, mode: "Train" },
     soldier: { label: "Train Army", type: "soldier", time: trainTimes.soldier, mode: "Train" },
@@ -269,6 +297,7 @@
     extractor: { label: "Build Extractor", type: "extractor", time: buildTimes.extractor, mode: "Build" },
     forge: { label: "Build Forge", type: "forge", time: buildTimes.forge, mode: "Build" },
     heavyTech: { label: "Build Heavy Tech", type: "heavyTech", time: buildTimes.heavyTech, mode: "Build" },
+    hangar: { label: "Build Hangar", type: "hangar", time: buildTimes.hangar, mode: "Build" },
     armor: { label: "Upgrade Armor", type: "armor", time: 22, mode: "Research" },
     eliteArmor: { label: "Elite Armor", type: "eliteArmor", time: 30, mode: "Research" },
     factionTech: { label: "Faction Upgrade", type: "factionTech", time: 26, mode: "Research" }
@@ -360,7 +389,7 @@
       },
       {
         title: "Train Fighters",
-        copy: "Click your Barracks, then click Train Army at the bottom right. Training has a timer before the unit appears.",
+        copy: "Click your faction's army building, then choose a named unit such as Gleamling, Bolt Lamb, or Sparkling. Training has a timer before the unit appears.",
         task: "Create 3 army units",
         done: () => state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length >= 3
       },
@@ -446,9 +475,9 @@
       return [
         {
           title: "Raise the Towers",
-          copy: "The wolves are surrounding Rainbow Ridge. Start with builders, soldiers, and a damaged fort. Build two Defence Towers.",
-          task: "Build or control 2 Defence Towers",
-          done: () => state.structures.filter((structure) => structure.owner === "player" && structure.type === "defenseTower" && !structure.underConstruction).length >= 2
+          copy: "The wolves are surrounding Rainbow Ridge. Two Prism Towers are already manned at the damaged fort. Build a third tower to strengthen the line.",
+          task: "Build or control 3 Prism Towers",
+          done: () => state.structures.filter((structure) => structure.owner === "player" && structure.type === "defenseTower" && !structure.underConstruction).length >= 3
         },
         {
           title: "Survive the Moonfang Siege",
@@ -489,7 +518,7 @@
     return [
       {
         title: "Hold the Rainbow Gate",
-        copy: "Derek, Fiddler Fern, and Whisp are already defending the old Rainbow Gate. Hold the line until the first wolf rush breaks.",
+        copy: "Derek, Fiddler Fern, and Whisp are behind the Rainbow Gate wall with two manned Prism Towers. Hold the opening until the first wolf rush breaks.",
         task: "Survive the opening wolf attack",
         done: () => story.gateHeld
       },
@@ -938,7 +967,7 @@
   function footprintRadius(type) {
     const base = stats[type].radius;
     if (type === "base") return base * 0.78;
-    if (type === "production" || type === "heavyTech") return base * 0.78;
+    if (type === "production" || type === "heavyTech" || type === "hangar") return base * 0.78;
     if (type === "forge" || type === "extractor") return base * 0.75;
     if (type === "supply" || type === "defenseTower") return base * 0.72;
     return base;
@@ -955,8 +984,16 @@
       .filter((entity) => entity.hp > 0 && !entity.untargetable && isHostileTo(owner, entity, sourcePlayerIndex));
   }
 
-  function nearestAttackTarget(owner, x, y, range, sourcePlayerIndex = null) {
-    return attackTargetsFor(owner, sourcePlayerIndex)
+  function canAttackTarget(attacker, target) {
+    if (!attacker || !target) return true;
+    const attackerStats = stats[attacker.type];
+    if (!attackerStats || !(attackerStats.damage > 0)) return false;
+    return stats[target.type].airborne ? Boolean(attackerStats.attackAir) : Boolean(attackerStats.attackGround);
+  }
+
+  function nearestAttackTarget(attacker, x, y, range) {
+    return attackTargetsFor(attacker.owner, attacker.playerIndex)
+      .filter((entity) => canAttackTarget(attacker, entity))
       .filter((entity) => Math.hypot(entity.x - x, entity.y - y) < range + stats[entity.type].radius)
       .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || null;
   }
@@ -1119,6 +1156,18 @@
     const southTower = addStructure("player", "rainbow", "defenseTower", gate.x + 180, gate.y + 75, 0);
     northTower.storyTag = "rainbowGate";
     southTower.storyTag = "rainbowGate";
+    loadStoryTower(northTower);
+    loadStoryTower(southTower);
+    [
+      [gate.x + 105, gate.y - 175],
+      [gate.x + 125, gate.y - 125],
+      [gate.x + 145, gate.y + 135],
+      [gate.x + 165, gate.y + 185]
+    ].forEach(([x, y], index) => {
+      const wall = addStructure("player", "rainbow", "wall", x, y, 0);
+      wall.storyTag = "rainbowGateWall";
+      wall.wallIndex = index;
+    });
 
     addStoryUnit("player", "rainbow", "worker", gate.x - 15, gate.y + 45, 0);
     addStoryUnit("player", "rainbow", "worker", gate.x - 65, gate.y + 140, 0);
@@ -1200,6 +1249,8 @@
 
     addStructure("player", "rainbow", "base", camp.x - 120, camp.y + 40, 0);
     addStructure("player", "rainbow", "supply", camp.x - 230, camp.y - 95, 0);
+    addStoryLoadedTower("rainbow", camp.x + 155, camp.y - 100, 0);
+    addStoryLoadedTower("rainbow", camp.x + 185, camp.y + 115, 0);
     addStoryUnit("player", "rainbow", "worker", camp.x + 15, camp.y + 25, 0);
     addStoryUnit("player", "rainbow", "worker", camp.x - 55, camp.y + 115, 0);
     addStoryUnit("player", "rainbow", "worker", camp.x - 115, camp.y - 45, 0);
@@ -1241,6 +1292,8 @@
 
     addStructure("player", "rainbow", "base", camp.x - 115, camp.y + 25, 0);
     addStructure("player", "rainbow", "supply", camp.x - 225, camp.y - 105, 0);
+    addStoryLoadedTower("rainbow", camp.x + 165, camp.y - 105, 0);
+    addStoryLoadedTower("rainbow", camp.x + 195, camp.y + 120, 0);
     addStoryHero("player", "Little Tuft", "worker", camp.x + 25, camp.y - 60, {
       special: "Hero: trail guide",
       hpMultiplier: 2.1,
@@ -1289,6 +1342,9 @@
     addStructure("player", "rainbow", "production", fort.x + 45, fort.y + 140, 0);
     const tower = addStructure("player", "rainbow", "defenseTower", fort.x + 165, fort.y - 65, 0);
     tower.hp = Math.floor(tower.maxHp * 0.65);
+    loadStoryTower(tower);
+    const southTower = addStoryLoadedTower("rainbow", fort.x + 185, fort.y + 115, 0);
+    southTower.hp = Math.floor(southTower.maxHp * 0.75);
     addStoryHero("player", "Fiddler Fern", "heavy", fort.x + 95, fort.y + 25, {
       special: "Hero: ridge defender",
       hpMultiplier: 2.0,
@@ -1330,6 +1386,8 @@
     addStructure("player", "rainbow", "supply", rally.x - 245, rally.y - 110, 0);
     addStructure("player", "rainbow", "production", rally.x + 20, rally.y + 145, 0);
     addStructure("player", "rainbow", "forge", rally.x + 165, rally.y - 80, 0);
+    addStoryLoadedTower("rainbow", rally.x + 265, rally.y - 135, 0);
+    addStoryLoadedTower("rainbow", rally.x + 310, rally.y + 150, 0);
     addStoryUnit("player", "rainbow", "worker", rally.x - 10, rally.y + 40, 0);
     addStoryUnit("player", "rainbow", "worker", rally.x - 60, rally.y + 135, 0);
     addStoryUnit("player", "rainbow", "worker", rally.x - 120, rally.y - 50, 0);
@@ -1442,6 +1500,22 @@
     addUnit(owner, faction, "worker", x + direction * 60, y + 80, playerIndex);
     addUnit(owner, faction, "worker", x + direction * 170, y + 70, playerIndex);
     side.woolUsed += 3;
+  }
+
+  function addStoryLoadedTower(faction, x, y, playerIndex = 0) {
+    const tower = addStructure("player", faction, "defenseTower", x, y, playerIndex);
+    loadStoryTower(tower);
+    return tower;
+  }
+
+  function loadStoryTower(tower) {
+    const worker = addStoryUnit(tower.owner, tower.faction, "worker", tower.x, tower.y, tower.playerIndex);
+    tower.garrisonedWorkerId = worker.id;
+    worker.garrisonedIn = tower.id;
+    worker.x = tower.x;
+    worker.y = tower.y;
+    worker.tx = tower.x;
+    worker.ty = tower.y;
   }
 
   function addResourceCluster(x, y) {
@@ -1824,11 +1898,61 @@
   }
 
   function tooltipText(config) {
-    const label = ["soldier", "heavy", "elite", "support", "flyer", "extraHeavy", "worker"].includes(config.type)
-      ? config.label + " (" + unitLabel(config.type, state.player.faction) + ")"
-      : config.label;
+    const label = (config.mode || "Build") + " " + commandName(config.type, state.player.faction);
     const timeText = config.time ? "\nTime: " + config.time + "s" : "";
     return label + "\nCost: " + costLine(config.type) + timeText;
+  }
+
+  function structureLabel(type, faction) {
+    const f = factionData[faction];
+    if (type === "base") return f.base;
+    if (type === "production") return f.production;
+    if (type === "supply") return f.supply;
+    if (type === "extractor") return f.extractor;
+    if (type === "forge") return f.forge;
+    if (type === "heavyTech") return f.heavyTech;
+    if (type === "hangar") return f.hangar;
+    if (type === "defenseTower") return f.defenseTower;
+    if (type === "wall") return faction === "rainbow" ? "Rainbow Gate Wall" : "Defensive Wall";
+    return "Structure";
+  }
+
+  function commandName(type, faction) {
+    if (stats[type] && stats[type].speed > 0) return unitLabel(type, faction);
+    if (stats[type]) return structureLabel(type, faction);
+    if (type === "armor") return "Armor";
+    if (type === "eliteArmor") return "Elite Armor";
+    if (type === "factionTech") return factionUpgradeName(faction);
+    return type;
+  }
+
+  function setCommandCaption(button, verb, name) {
+    if (button) button.textContent = verb + " " + name;
+  }
+
+  function updateFactionCommandNames() {
+    const f = factionData[state.player.faction];
+    setCommandCaption(ui.worker, "Train", f.worker);
+    setCommandCaption(ui.soldier, "Train", f.soldier);
+    setCommandCaption(ui.heavy, "Train", f.heavy);
+    setCommandCaption(ui.elite, "Train", f.elite);
+    setCommandCaption(ui.support, "Train", f.support);
+    setCommandCaption(ui.flyer, "Train", f.flyer);
+    setCommandCaption(ui.extraHeavy, "Train", f.extraHeavy);
+    setCommandCaption(ui.base, "Build", f.base);
+    setCommandCaption(ui.supply, "Build", f.supply);
+    setCommandCaption(ui.production, "Build", f.production);
+    setCommandCaption(ui.defenseTower, "Build", f.defenseTower);
+    setCommandCaption(ui.extractor, "Build", f.extractor);
+    setCommandCaption(ui.forge, "Build", f.forge);
+    setCommandCaption(ui.heavyTech, "Build", f.heavyTech);
+    setCommandCaption(ui.hangar, "Build", f.hangar);
+    document.querySelectorAll("[data-command-group='barracks']").forEach((group) => { group.textContent = f.production; });
+    document.querySelectorAll("[data-command-group='heavy-tech']").forEach((group) => { group.textContent = f.heavyTech; });
+    document.querySelectorAll("[data-command-group='hangar']").forEach((group) => { group.textContent = f.hangar; });
+    document.querySelectorAll("[data-command-group='base']").forEach((group) => { group.textContent = f.base; });
+    document.querySelectorAll("[data-command-group='forge']").forEach((group) => { group.textContent = f.forge; });
+    document.querySelectorAll("[data-command-group='tower']").forEach((group) => { group.textContent = f.defenseTower; });
   }
 
   let commandTooltipEventsReady = false;
@@ -1895,6 +2019,7 @@
       ["extractor", ui.extractor],
       ["forge", ui.forge],
       ["heavyTech", ui.heavyTech],
+      ["hangar", ui.hangar],
       ["armor", ui.armor],
       ["eliteArmor", ui.eliteArmor],
       ["factionTech", ui.factionTech]
@@ -1916,12 +2041,13 @@
   }
 
   function queueTraining(type, owner = "player") {
-    const producerType = type === "worker" ? "base" : type === "extraHeavy" ? "heavyTech" : "production";
+    const producerType = type === "worker" ? "base" : type === "extraHeavy" ? "heavyTech" : type === "flyer" ? "hangar" : "production";
     const producer = readyStructure(producerType, owner);
     if (!producer) {
       if (owner === "player") {
         if (type === "worker") say("You need a living main base.");
-        else if (type === "extraHeavy") say("Build Heavy Tech before training extra heavy units.");
+        else if (type === "extraHeavy") say("Build " + factionData[sideFor(owner).faction].heavyTech + " before training " + unitLabel(type, sideFor(owner).faction) + ".");
+        else if (type === "flyer") say("Build " + factionData[sideFor(owner).faction].hangar + " before training " + unitLabel(type, sideFor(owner).faction) + ".");
         else say("Build a Barracks before training army units.");
       }
       return;
@@ -1932,10 +2058,6 @@
     }
     if (type === "support" && !readyStructure("forge", owner)) {
       if (owner === "player") say("Build a Forge to unlock support units.");
-      return;
-    }
-    if (type === "flyer" && !readyStructure("heavyTech", owner)) {
-      if (owner === "player") say("Build Heavy Tech to unlock flying units.");
       return;
     }
     if (!spend(type, owner)) return;
@@ -2013,12 +2135,14 @@
       say("Select a worker first, then choose a building.");
       return;
     }
-    if ((type === "extractor" || type === "forge" || type === "heavyTech") && !readyStructure("production")) {
+    if ((type === "extractor" || type === "forge" || type === "heavyTech" || type === "hangar") && !readyStructure("production")) {
       say("Build a Barracks to unlock advanced worker buildings.");
       return;
     }
     placement = { type, workerId: worker.id, x: worker.x + 90, y: worker.y - 70, resourceId: null };
-    say(type === "extractor" ? "Place the Extractor on a lollipop geyser." : "Place the building on open ground. Right click cancels.");
+    say(type === "extractor"
+      ? "Place " + structureLabel(type, state.player.faction) + " on a lollipop geyser."
+      : "Place " + structureLabel(type, state.player.faction) + " on open ground. Right click cancels.");
   }
 
   function buildSupply() {
@@ -2049,9 +2173,13 @@
     beginStructurePlacement("heavyTech");
   }
 
+  function buildHangar() {
+    beginStructurePlacement("hangar");
+  }
+
   function canPlace(type, x, y, owner = "player") {
     const s = stats[type];
-    if ((type === "extractor" || type === "forge" || type === "heavyTech") && !readyStructure("production", owner)) return false;
+    if ((type === "extractor" || type === "forge" || type === "heavyTech" || type === "hangar") && !readyStructure("production", owner)) return false;
     if (type === "extractor") return Boolean(lollipopGeyserAt(x, y));
     const faction = sideFor(owner).faction;
     if (faction === "fire" && type !== "base" && !isWarmWool(x, y, owner)) return false;
@@ -2218,12 +2346,13 @@
       playEffectTone(520, 0.18, 0.04);
       state.stats.structuresBuilt += 1;
       if (structure.type === "supply") state.player.woolMax += 8;
-      if (structure.type === "supply") say("Supply building complete.");
-      else if (structure.type === "extractor") say("Lollipop Extractor complete. Lolligas is flowing.");
-      else if (structure.type === "forge") say("Forge complete. Armor upgrades unlocked.");
+      if (structure.type === "supply") say(factionData[structure.faction].supply + " complete.");
+      else if (structure.type === "extractor") say(factionData[structure.faction].extractor + " complete. Lolligas is flowing.");
+      else if (structure.type === "forge") say(factionData[structure.faction].forge + " complete. Armor upgrades unlocked.");
       else if (structure.type === "heavyTech") say(factionData[structure.faction].heavyTech + " complete. Extra heavy units unlocked.");
-      else if (structure.type === "defenseTower") say("Defence Tower complete. Right-click it with a worker to man the cannon.");
-      else say("Barracks complete. Army training unlocked.");
+      else if (structure.type === "hangar") say(factionData[structure.faction].hangar + " complete. " + factionData[structure.faction].flyer + " training unlocked.");
+      else if (structure.type === "defenseTower") say(factionData[structure.faction].defenseTower + " complete. Right-click it with a worker to man the cannon.");
+      else say(factionData[structure.faction].production + " complete. " + factionData[structure.faction].soldier + " training unlocked.");
     } else if (structure.type === "supply") {
       state.enemy.woolMax += 8;
     }
@@ -2591,7 +2720,7 @@
   function issueCommand(wx, wy) {
     const units = state.units.filter((u) => selected.has(u.id) && !u.garrisonedIn);
     if (!units.length) {
-      const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech"));
+      const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech" || s.type === "hangar"));
       if (structures.length) {
         if (isNetworkGuest) sendNetworkCommand({ action: "rally", structureIds: structures.map((s) => s.id), x: wx, y: wy });
         else applyRally("player", structures.map((s) => s.id), wx, wy);
@@ -2635,7 +2764,7 @@
     const target = targetAt(wx, wy, owner, sourcePlayerIndex);
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
-      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex)) {
+      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex) && canAttackTarget(unit, target)) {
         unit.target = target.id;
         unit.garrisonTarget = null;
         unit.attackMove = false;
@@ -2663,6 +2792,9 @@
       } else if (target && target.amount && target.type === "lollipop" && unit.type === "worker") {
         if (owner === "player") say("Build a Lollipop Extractor on this geyser to collect Lolligas.");
       } else {
+        if (target && target.kind && isHostileTo(owner, target, unit.playerIndex) && !canAttackTarget(unit, target) && owner === "player") {
+          say(unitLabel(unit.type, unit.faction) + " cannot attack " + (stats[target.type].airborne ? "air" : "ground") + " targets.");
+        }
         const move = commandMovePoint(unit, wx, wy, offset);
         unit.target = null;
         unit.harvest = null;
@@ -2836,7 +2968,7 @@
   }
 
   function applyRally(owner, structureIds, wx, wy) {
-    state.structures.filter((s) => structureIds.includes(s.id) && s.owner === owner && (s.type === "production" || s.type === "base" || s.type === "heavyTech")).forEach((structure) => {
+    state.structures.filter((s) => structureIds.includes(s.id) && s.owner === owner && (s.type === "production" || s.type === "base" || s.type === "heavyTech" || s.type === "hangar")).forEach((structure) => {
       structure.rallyX = wx;
       structure.rallyY = wy;
     });
@@ -2877,7 +3009,7 @@
       unit.attackMove = true;
       unit.attackX = wx + offset.x;
       unit.attackY = wy + offset.y;
-      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex)) {
+      if (target && target.kind && isHostileTo(owner, target, unit.playerIndex) && canAttackTarget(unit, target)) {
         unit.target = target.id;
         const stop = attackStopPoint(unit, target, index, units.length);
         unit.tx = stop.x;
@@ -3211,7 +3343,7 @@
 
     if (unit.target) {
       const target = [...state.units, ...state.structures].find((e) => e.id === unit.target);
-      if (target && !isHostileTo(unit.owner, target, unit.playerIndex)) {
+      if (target && (!isHostileTo(unit.owner, target, unit.playerIndex) || !canAttackTarget(unit, target))) {
         unit.target = null;
         if (unit.attackMove && unit.attackX !== null && unit.attackY !== null) {
           unit.tx = unit.attackX;
@@ -3269,7 +3401,7 @@
       if (structure.type !== "defenseTower" || structure.underConstruction || !structure.garrisonedWorkerId) return;
       structure.cooldown = Math.max(0, (structure.cooldown || 0) - dt);
       const s = stats.defenseTower;
-      const target = nearestAttackTarget(structure.owner, structure.x, structure.y, s.range, structure.playerIndex);
+      const target = nearestAttackTarget(structure, structure.x, structure.y, s.range);
       if (!target || structure.cooldown > 0) return;
       structure.cooldown = s.cooldown;
       target.hp -= damageAfterArmor(s.damage, target);
@@ -3296,9 +3428,9 @@
       const unitDamage = (s.damage || 0) + (unit.damageBonus || 0);
       const unitRange = (s.range || 0) + (unit.rangeBonus || 0);
       if (!unitDamage) return;
-      let target = unit.target ? attackTargetsFor(unit.owner, unit.playerIndex).find((e) => e.id === unit.target) : null;
+      let target = unit.target ? attackTargetsFor(unit.owner, unit.playerIndex).find((e) => e.id === unit.target && canAttackTarget(unit, e)) : null;
       if (!target) {
-        target = nearestAttackTarget(unit.owner, unit.x, unit.y, unitRange, unit.playerIndex);
+        target = nearestAttackTarget(unit, unit.x, unit.y, unitRange);
         if (target && unit.attackMove) unit.target = target.id;
       }
       if (!target) return;
@@ -3322,7 +3454,7 @@
 
   function applySplashDamage(unit, target, damage, radius) {
     [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].forEach((entity) => {
-      if (entity.id === target.id || entity.untargetable || !isHostileTo(unit.owner, entity, unit.playerIndex)) return;
+      if (entity.id === target.id || entity.untargetable || !isHostileTo(unit.owner, entity, unit.playerIndex) || !canAttackTarget(unit, entity)) return;
       const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
       if (distance > radius + stats[entity.type].radius) return;
       entity.hp -= damageAfterArmor(damage, entity);
@@ -3593,18 +3725,31 @@
       tech.hp = Math.max(1, Math.floor(tech.maxHp * 0.1));
       if (owner === "enemy" && visibleToPlayer(tech)) say("Enemy Heavy Tech spotted.");
     }
+    let hangar = state.structures.find((s) => s.owner === owner && s.type === "hangar" && !s.underConstruction);
+    const rebuildingHangar = state.structures.some((s) => s.owner === owner && s.type === "hangar" && s.underConstruction);
+    if (!hangar && !rebuildingHangar && state.elapsed > aiProfile.heavyDelay + 95 && side.marshmallows >= costs.hangar.m && side.lollipops >= costs.hangar.l) {
+      side.marshmallows -= costs.hangar.m;
+      side.lollipops -= costs.hangar.l;
+      const airBuilding = addStructure(owner, base.faction, "hangar", production.x + 105, production.y + 120, production.playerIndex ?? base.playerIndex);
+      airBuilding.underConstruction = true;
+      airBuilding.buildTime = buildTimes.hangar + 8;
+      airBuilding.buildProgress = 0;
+      airBuilding.buildStarted = true;
+      airBuilding.hp = Math.max(1, Math.floor(airBuilding.maxHp * 0.1));
+    }
     const enemyArmy = state.units.filter((u) => u.owner === owner && u.type !== "worker");
     const armyCap = state.elapsed < 90 ? aiProfile.caps[0] : state.elapsed < 150 ? aiProfile.caps[1] : aiProfile.caps[2];
     if (side.marshmallows >= 75 && enemyArmy.length < armyCap) {
       heavyTech = state.structures.find((s) => s.owner === owner && s.type === "heavyTech" && !s.underConstruction);
+      hangar = state.structures.find((s) => s.owner === owner && s.type === "hangar" && !s.underConstruction);
       const canExtraHeavy = heavyTech && state.elapsed > aiProfile.heavyDelay + 120 && side.lollipops >= costs.extraHeavy.l && side.marshmallows >= costs.extraHeavy.m && Math.random() > 0.86;
       const needsSupport = state.elapsed > 190 && !enemyArmy.some((unit) => unit.type === "support") && side.lollipops >= costs.support.l && side.marshmallows >= costs.support.m;
-      const canFly = heavyTech && state.elapsed > aiProfile.heavyDelay + 45 && side.lollipops >= costs.flyer.l && side.marshmallows >= costs.flyer.m && Math.random() > 0.9;
+      const canFly = hangar && state.elapsed > aiProfile.heavyDelay + 45 && side.lollipops >= costs.flyer.l && side.marshmallows >= costs.flyer.m && Math.random() > 0.9;
       const type = canExtraHeavy ? "extraHeavy" : needsSupport ? "support" : canFly ? "flyer" : state.elapsed > aiProfile.heavyDelay && side.lollipops >= 35 && Math.random() > aiProfile.heavyChance ? "heavy" : "soldier";
       if (side.lollipops >= costs[type].l && side.marshmallows >= costs[type].m) {
         side.lollipops -= costs[type].l;
         side.marshmallows -= costs[type].m;
-        const producer = type === "extraHeavy" || type === "flyer" ? heavyTech : production;
+        const producer = type === "extraHeavy" ? heavyTech : type === "flyer" ? hangar : production;
         const unit = addUnit(owner, producer.faction, type, producer.x - 60, producer.y + (Math.random() - 0.5) * 90, producer.playerIndex ?? base.playerIndex);
         unit.tx = producer.x - 120 + Math.random() * 70;
         unit.ty = producer.y - 90 + Math.random() * 180;
@@ -3978,7 +4123,9 @@
   }
 
   function drawStructureShape(e, f, s) {
-    if (e.faction === "wolves") {
+    if (e.type === "wall") {
+      drawRainbowGateWall(e, s);
+    } else if (e.faction === "wolves") {
       drawWolfStructureShape(e, s);
     } else {
       const crop = buildingCrop(e);
@@ -4012,6 +4159,32 @@
       ctx.lineTo(s.radius * 0.95, -s.radius * 1.16);
       ctx.stroke();
     }
+  }
+
+  function drawRainbowGateWall(e, s) {
+    ctx.save();
+    ctx.fillStyle = "#f7ecff";
+    ctx.strokeStyle = "#8d63dc";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-s.radius, -22, s.radius * 2, 48, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#d9c7ff";
+    for (let x = -s.radius + 7; x < s.radius - 5; x += 18) {
+      ctx.fillRect(x, -13, 12, 14);
+      ctx.fillRect(x + 7, 4, 12, 14);
+    }
+    ctx.fillStyle = "#fff47a";
+    ctx.beginPath();
+    ctx.moveTo(0, -32);
+    ctx.lineTo(7, -20);
+    ctx.lineTo(0, -8);
+    ctx.lineTo(-7, -20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawWolfStructureShape(e, s) {
@@ -4093,7 +4266,7 @@
 
   function buildingCrop(e) {
     const rows = { rainbow: 0, mech: 1, fire: 2 };
-    const cols = { base: 0, supply: 1, production: 2, extractor: 3, forge: 4, heavyTech: 2, defenseTower: 1 };
+    const cols = { base: 0, supply: 1, production: 2, extractor: 3, forge: 4, heavyTech: 2, hangar: 3, defenseTower: 1 };
     const cellW = (buildingsPoster.naturalWidth || 1800) / 5;
     const cellH = (buildingsPoster.naturalHeight || 780) / 3;
     return {
@@ -4302,8 +4475,6 @@
     if (!mouse.down) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const ratio = window.devicePixelRatio || 1;
-    ctx.scale(ratio, ratio);
     const x = Math.min(mouse.sx, mouse.x);
     const y = Math.min(mouse.sy, mouse.y);
     const w = Math.abs(mouse.x - mouse.sx);
@@ -4347,6 +4518,7 @@
   }
 
   function updateUi() {
+    updateFactionCommandNames();
     updateCommandTooltips();
     ui.lollipops.textContent = Math.floor(state.player.lollipops);
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
@@ -4360,17 +4532,18 @@
     showCommandGroups([]);
     if (!picked.length) {
       ui.title.textContent = "No Selection";
-      ui.copy.textContent = "Select a worker, base, Barracks, or Forge to see its commands.";
+      ui.copy.textContent = "Select one of your sheep or buildings to see its commands.";
       return;
     }
     const first = selectedCommandSubject(picked);
     const f = factionData[first.faction];
     const label = first.heroName ? first.heroName : first.kind === "structure"
-      ? (first.type === "base" ? f.base : first.type === "production" ? "Barracks" : first.type === "extractor" ? "Lollipop Extractor" : first.type === "forge" ? "Forge" : first.type === "heavyTech" ? f.heavyTech : first.type === "defenseTower" ? "Defence Tower" : "Wool Capacity")
+      ? structureLabel(first.type, first.faction)
       : unitLabel(first.type, first.faction);
     const hasBarracks = Boolean(readyStructure("production"));
     const hasForge = Boolean(readyStructure("forge"));
     const hasHeavyTech = Boolean(readyStructure("heavyTech"));
+    const hasHangar = Boolean(readyStructure("hangar"));
     if (!first.underConstruction && first.kind === "unit" && first.type === "worker") {
       showCommandGroups(first.heroName ? ["unit", "hero"] : ["unit", "basic-build", "advanced-build"]);
       ui.move.disabled = false;
@@ -4384,6 +4557,7 @@
       ui.extractor.disabled = !hasBarracks;
       ui.forge.disabled = !hasBarracks;
       ui.heavyTech.disabled = !hasBarracks;
+      ui.hangar.disabled = !hasBarracks;
       if (first.heroName) ui.heroAbility.disabled = first.heroAbilityCooldown > 0;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "base") {
       showCommandGroups(["base"]);
@@ -4395,10 +4569,12 @@
       ui.heavy.disabled = false;
       ui.elite.disabled = !hasForge;
       ui.support.disabled = !hasForge;
-      ui.flyer.disabled = !hasHeavyTech;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "heavyTech") {
       showCommandGroups(["heavy-tech"]);
       ui.extraHeavy.disabled = false;
+    } else if (!first.underConstruction && first.kind === "structure" && first.type === "hangar") {
+      showCommandGroups(["hangar"]);
+      ui.flyer.disabled = false;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "defenseTower") {
       showCommandGroups(["tower"]);
       ui.unloadTower.disabled = !first.garrisonedWorkerId;
@@ -4422,33 +4598,46 @@
       ui.copy.textContent = "Constructing: " + Math.ceil(Math.max(0, first.buildTime - first.buildProgress)) + " seconds remaining.";
     } else if (first.kind === "unit" && first.type === "worker") {
       ui.copy.textContent = hasBarracks
-        ? "Worker commands. Build extra bases at far marshmallow fields to expand."
-        : "Worker commands. Build a Base, Supply, or Barracks. Barracks unlocks Extractor and Forge.";
+        ? f.worker + " commands. Attacks ground only. Build another " + f.base + " at a distant Marshmallow field to expand."
+        : f.worker + " commands. Attacks ground only. Build " + f.base + ", " + f.supply + ", or " + f.production + ".";
     } else if (first.kind === "structure" && first.type === "base") {
-      ui.copy.textContent = "Main base selected. Train workers here.";
+      ui.copy.textContent = f.base + " selected. Train " + f.worker + " here.";
     } else if (first.kind === "structure" && first.type === "production") {
       ui.copy.textContent = hasForge
-        ? "Barracks selected. Train army units and elite units here. Build Heavy Tech for extra heavy ground units."
-        : "Barracks selected. Build a Forge to unlock elite units, or Heavy Tech for extra heavy ground units.";
+        ? f.production + " selected. Train " + f.soldier + ", " + f.heavy + ", " + f.elite + ", and " + f.support + " here."
+        : f.production + " selected. Build " + f.forge + " to unlock " + f.elite + " and " + f.support + ".";
     } else if (first.kind === "structure" && first.type === "heavyTech") {
       ui.copy.textContent = hasHeavyTech
-        ? f.heavyTech + " selected. Train extra heavy ground units here."
+        ? f.heavyTech + " selected. Train " + f.extraHeavy + " here."
         : f.heavyTech + " selected.";
+    } else if (first.kind === "structure" && first.type === "hangar") {
+      ui.copy.textContent = hasHangar ? f.hangar + " selected. Train " + f.flyer + " here." : f.hangar + " selected.";
     } else if (first.kind === "structure" && first.type === "defenseTower") {
       ui.copy.textContent = first.garrisonedWorkerId
-        ? "Defence Tower manned. The worker cannot move while firing the cannon."
-        : "Defence Tower empty. Select a worker and right-click this tower to man the cannon.";
+        ? f.defenseTower + " manned. Attacks air and ground. The " + f.worker + " cannot move while firing the cannon."
+        : f.defenseTower + " empty. Select " + f.worker + " and right-click it to man the cannon.";
     } else if (first.kind === "structure" && first.type === "forge") {
-      ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
+      ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? f.forge + " selected. Elite armor is unlocked." : f.forge + " selected. Research armor upgrades here.");
     } else if (first.heroName) {
-      ui.copy.textContent = first.storySpecial + ". Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
+      ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + " Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
       ui.copy.textContent = forgeQueue || (producerQueue
         ? "Training: " + Math.ceil(Math.max(0, producerQueue.duration - producerQueue.elapsed)) + " seconds remaining."
-        : picked.length === 1 ? f.name + " " + label + ". Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
+        : picked.length === 1 ? f.name + " " + label + ". " + combatRoleText(first) + "Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
     }
+  }
+
+  function combatRoleText(entity) {
+    const unitStats = stats[entity.type];
+    if (!unitStats || entity.kind !== "unit") return "";
+    if (unitStats.heal) return "Heals friendly units and does not attack. ";
+    if (unitStats.airborne) return "Flying unit; passes over buildings. ";
+    if (unitStats.attackAir && unitStats.attackGround) return "Attacks air and ground. ";
+    if (unitStats.attackAir) return "Attacks air only. ";
+    if (unitStats.attackGround) return "Attacks ground only. ";
+    return "Does not attack. ";
   }
 
   function activeUpgradeText() {
@@ -4514,6 +4703,8 @@
     mouse.down = true;
     mouse.sx = p.x;
     mouse.sy = p.y;
+    mouse.swx = p.wx;
+    mouse.swy = p.wy;
   });
 
   canvas.addEventListener("mousemove", (event) => {
@@ -4549,11 +4740,11 @@
       const hit = selectableAt(mouse.wx, mouse.wy);
       if (hit) selected.add(hit.id);
     } else {
-      const x1 = Math.min(mouse.sx, mouse.x) + camera.x;
-      const x2 = Math.max(mouse.sx, mouse.x) + camera.x;
-      const y1 = Math.min(mouse.sy, mouse.y) + camera.y;
-      const y2 = Math.max(mouse.sy, mouse.y) + camera.y;
-      state.units.filter((u) => u.owner === "player" && u.x >= x1 && u.x <= x2 && u.y >= y1 && u.y <= y2).forEach((u) => selected.add(u.id));
+      const x1 = Math.min(mouse.swx, mouse.wx);
+      const x2 = Math.max(mouse.swx, mouse.wx);
+      const y1 = Math.min(mouse.swy, mouse.wy);
+      const y2 = Math.max(mouse.swy, mouse.wy);
+      state.units.filter((u) => u.owner === "player" && !u.garrisonedIn && u.x >= x1 && u.x <= x2 && u.y >= y1 && u.y <= y2).forEach((u) => selected.add(u.id));
     }
     if (selected.size) playEffectTone(330, 0.055, 0.025);
   });
@@ -4844,6 +5035,10 @@
   ui.heavyTech.addEventListener("click", () => {
     startMatchMusic();
     buildHeavyTech();
+  });
+  ui.hangar.addEventListener("click", () => {
+    startMatchMusic();
+    buildHangar();
   });
   ui.armor.addEventListener("click", () => {
     startMatchMusic();

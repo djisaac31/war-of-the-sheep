@@ -373,6 +373,8 @@ button {
   font-size: 0.8rem;
   font-weight: 900;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+  padding: 6px;
 }
 
 .command-card button:hover:not(:disabled),
