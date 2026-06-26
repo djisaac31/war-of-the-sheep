@@ -134,6 +134,7 @@
   }
   let roomSettings = readRoomSettings();
   const tutorialMode = params.get("tutorial") === "1" || Boolean(roomSettings.tutorial);
+  const tutorialLesson = tutorialMode ? Math.max(1, Math.min(2, Number(params.get("lesson") || roomSettings.tutorialLesson || 1))) : 1;
   const storyMode = params.get("story") === "1" || Boolean(roomSettings.story);
   const storyChapter = storyMode ? Math.max(1, Math.min(5, Number(params.get("chapter") || roomSettings.storyChapter || localStorage.getItem("magic-sheep-story-chapter") || 1))) : 1;
   const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
@@ -141,7 +142,7 @@
   ui.room.textContent = storyMode
     ? "Story Mission " + storyChapter
     : tutorialMode
-    ? "Tutorial Mission"
+    ? "Tutorial " + tutorialLesson
     : roomSettings.training ? "Training " + aiDifficulty.toUpperCase() + " - " + (roomSettings.map || "Candy Meadow")
     : network.enabled ? "Online Room " + roomCode + " - P" + (network.playerIndex + 1) : "Room " + roomCode;
 
@@ -368,9 +369,87 @@
     announced: -1,
     attackMoveIssued: false,
     hidden: false,
-    missions: [
+    missions: tutorialMissionsForLesson(tutorialLesson)
+  };
+  const story = {
+    step: 0,
+    announced: -1,
+    hidden: false,
+    cutscene: false,
+    cutscenesSeen: new Set(),
+    rescuedTuft: false,
+    gateHeld: false,
+    counterWaveSent: false,
+    finalWaveSent: false,
+    finalWaveHeld: false,
+    elderJoined: false,
+    bossPhases: new Set(),
+    missions: []
+  };
+  story.missions = storyMissionsForChapter(storyChapter);
+
+  function tutorialMissionsForLesson(lesson) {
+    if (lesson === 2) {
+      return [
+        {
+          title: "Tutorial 2: Select a Worker",
+          copy: "This lesson teaches the new update. Select one worker sheep first. Workers build structures, repair non-Fire buildings, and can man defence towers.",
+          task: "Select one worker",
+          done: () => state.units.some((unit) => unit.owner === "player" && unit.type === "worker" && selected.has(unit.id))
+        },
+        {
+          title: "Build the Barracks",
+          copy: "Advanced worker buildings are locked until you finish a Barracks. Select a worker, choose Build Barracks, place it, and wait for the timer.",
+          task: "Finish one Barracks",
+          done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "production" && !structure.underConstruction)
+        },
+        {
+          title: "Add Lolligas",
+          copy: "Build an Extractor on a lollipop geyser. Lolligas pays for heavy units, flyers, upgrades, and special tech.",
+          task: "Finish one Lolligas Extractor",
+          done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "extractor" && !structure.underConstruction)
+        },
+        {
+          title: "Build a Forge",
+          copy: "The Forge unlocks armor upgrades, elite units, and support units. Select a worker and build one from Advanced Builds.",
+          task: "Finish one Forge",
+          done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "forge" && !structure.underConstruction)
+        },
+        {
+          title: "Research Armor",
+          copy: "Select the Forge and start an armor upgrade. Upgrades make your army stronger, just like in classic RTS games.",
+          task: "Finish one armor upgrade",
+          done: () => upgrades.armor.researched || upgrades.eliteArmor.researched || upgrades.factionTech.researched
+        },
+        {
+          title: "Build and Man Defence",
+          copy: "Build a Defence Tower, then select a worker and right-click the tower. The worker goes inside and uses the cannon.",
+          task: "Man one Defence Tower",
+          done: () => state.structures.some((structure) => structure.owner === "player" && structure.type === "defenseTower" && !structure.underConstruction && structure.garrisonedWorkerId)
+        },
+        {
+          title: "Unlock Advanced Units",
+          copy: "Build a Hangar for flyers or a Heavy Facility for the extra heavy ground unit. These buildings need a finished Barracks first.",
+          task: "Finish a Hangar or Heavy Facility",
+          done: () => state.structures.some((structure) => structure.owner === "player" && (structure.type === "hangar" || structure.type === "heavyTech") && !structure.underConstruction)
+        },
+        {
+          title: "Train a Tech Unit",
+          copy: "Select your Hangar or Heavy Facility and train the named unit there. Flyers can cross buildings; extra heavy units break bases.",
+          task: "Train one flyer or extra heavy unit",
+          done: () => state.units.some((unit) => unit.owner === "player" && (unit.type === "flyer" || unit.type === "extraHeavy"))
+        },
+        {
+          title: "Finish the Skirmish",
+          copy: "Use your upgraded army, defence, and tech units to destroy every enemy base.",
+          task: "Destroy the enemy main base",
+          done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
+        }
+      ];
+    }
+    return [
       {
-        title: "Select a Worker",
+        title: "Tutorial 1: Select a Worker",
         copy: "Left-click one worker sheep to select it. You can also hold the mouse button and drag a box around several sheep.",
         task: "Select one worker",
         done: () => state.units.some((unit) => unit.owner === "player" && unit.type === "worker" && selected.has(unit.id))
@@ -405,24 +484,8 @@
         task: "Destroy the enemy main base",
         done: () => !state.structures.some((structure) => structure.owner === "enemy" && structure.type === "base")
       }
-    ]
-  };
-  const story = {
-    step: 0,
-    announced: -1,
-    hidden: false,
-    cutscene: false,
-    cutscenesSeen: new Set(),
-    rescuedTuft: false,
-    gateHeld: false,
-    counterWaveSent: false,
-    finalWaveSent: false,
-    finalWaveHeld: false,
-    elderJoined: false,
-    bossPhases: new Set(),
-    missions: []
-  };
-  story.missions = storyMissionsForChapter(storyChapter);
+    ];
+  }
 
   function storyMapName(chapter) {
     if (chapter === 2) return "Marshmallow Crossing";
@@ -1021,8 +1084,8 @@
       state.ally.woolMax = 0;
     }
     if (tutorialMode) {
-      state.player.marshmallows = 160;
-      state.player.lollipops = 45;
+      state.player.marshmallows = tutorialLesson === 2 ? 820 : 160;
+      state.player.lollipops = tutorialLesson === 2 ? 360 : 45;
       state.enemy.marshmallows = 45;
       state.enemy.lollipops = 0;
       state.enemy.woolUsed = 0;

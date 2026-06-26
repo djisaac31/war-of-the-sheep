@@ -24,6 +24,7 @@
   const trainingMap = document.querySelector("#training-map");
   const matchType = document.querySelector("#match-type");
   const tutorialTrain = document.querySelector("#tutorial-train");
+  const tutorialAdvanced = document.querySelector("#tutorial-advanced");
   const tutorialHost = document.querySelector("#tutorial-host");
   const storyStart = document.querySelector("#story-start");
   const campaignSelect = document.querySelector("#campaign-select");
@@ -430,7 +431,7 @@
       teamOptions(room),
       !isHost || room.started || room.matchType === "ffa",
       function (team) {
-        updateRoomSlot("team", { index, team }, function () {
+        return updateRoomSlot("team", { index, team }, function () {
           activeRoom.players[index].team = team;
         });
       }
@@ -442,7 +443,7 @@
       [["Rainbow Sheep", "Rainbow"], ["Mech Sheep", "Mech"], ["Fire Sheep", "Fire"]],
       room.started || !canChangeFaction,
       function (faction) {
-        updateRoomSlot("faction", { index, faction }, function () {
+        return updateRoomSlot("faction", { index, faction }, function () {
           activeRoom.players[index].faction = faction;
         });
       }
@@ -640,7 +641,7 @@
     renderCampaignProgress();
   }
 
-  tutorialTrain.addEventListener("click", function () {
+  function launchTutorialLesson(lesson) {
     const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];
     const savedIndex = Number(localStorage.getItem("magic-sheep-tutorial-race") || 0);
     const factionIndex = Number.isFinite(savedIndex) ? Math.max(0, Math.min(tutorialFactions.length - 1, savedIndex)) : 0;
@@ -653,6 +654,7 @@
       maxPlayers: 2,
       training: true,
       tutorial: true,
+      tutorialLesson: lesson,
       difficulty: "easy",
       createdAt: new Date().toISOString(),
       players: [
@@ -674,9 +676,19 @@
     renderRoom(room);
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
     localStorage.setItem("magic-sheep-tutorial-race", String(factionIndex));
-    status.textContent = "Starting " + faction + " tutorial mission.";
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1";
+    status.textContent = "Starting " + faction + " tutorial " + lesson + ".";
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1&lesson=" + lesson;
+  }
+
+  tutorialTrain.addEventListener("click", function () {
+    launchTutorialLesson(1);
   });
+
+  if (tutorialAdvanced) {
+    tutorialAdvanced.addEventListener("click", function () {
+      launchTutorialLesson(2);
+    });
+  }
 
   tutorialHost.addEventListener("click", function () {
     showPanel("host-panel", true, true);
