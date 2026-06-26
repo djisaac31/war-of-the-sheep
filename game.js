@@ -1904,15 +1904,14 @@
   }
 
   function structureLabel(type, faction) {
-    const f = factionData[faction];
-    if (type === "base") return f.base;
-    if (type === "production") return f.production;
-    if (type === "supply") return f.supply;
-    if (type === "extractor") return f.extractor;
-    if (type === "forge") return f.forge;
-    if (type === "heavyTech") return f.heavyTech;
-    if (type === "hangar") return f.hangar;
-    if (type === "defenseTower") return f.defenseTower;
+    if (type === "base") return "Main Base";
+    if (type === "production") return "Barracks";
+    if (type === "supply") return "Wool Capacity";
+    if (type === "extractor") return "Lolligas Extractor";
+    if (type === "forge") return "Forge";
+    if (type === "heavyTech") return "Heavy Facility";
+    if (type === "hangar") return "Hangar";
+    if (type === "defenseTower") return "Defence Tower";
     if (type === "wall") return faction === "rainbow" ? "Rainbow Gate Wall" : "Defensive Wall";
     return "Structure";
   }
@@ -1939,20 +1938,20 @@
     setCommandCaption(ui.support, "Train", f.support);
     setCommandCaption(ui.flyer, "Train", f.flyer);
     setCommandCaption(ui.extraHeavy, "Train", f.extraHeavy);
-    setCommandCaption(ui.base, "Build", f.base);
-    setCommandCaption(ui.supply, "Build", f.supply);
-    setCommandCaption(ui.production, "Build", f.production);
-    setCommandCaption(ui.defenseTower, "Build", f.defenseTower);
-    setCommandCaption(ui.extractor, "Build", f.extractor);
-    setCommandCaption(ui.forge, "Build", f.forge);
-    setCommandCaption(ui.heavyTech, "Build", f.heavyTech);
-    setCommandCaption(ui.hangar, "Build", f.hangar);
-    document.querySelectorAll("[data-command-group='barracks']").forEach((group) => { group.textContent = f.production; });
-    document.querySelectorAll("[data-command-group='heavy-tech']").forEach((group) => { group.textContent = f.heavyTech; });
-    document.querySelectorAll("[data-command-group='hangar']").forEach((group) => { group.textContent = f.hangar; });
-    document.querySelectorAll("[data-command-group='base']").forEach((group) => { group.textContent = f.base; });
-    document.querySelectorAll("[data-command-group='forge']").forEach((group) => { group.textContent = f.forge; });
-    document.querySelectorAll("[data-command-group='tower']").forEach((group) => { group.textContent = f.defenseTower; });
+    setCommandCaption(ui.base, "Build", structureLabel("base", state.player.faction));
+    setCommandCaption(ui.supply, "Build", structureLabel("supply", state.player.faction));
+    setCommandCaption(ui.production, "Build", structureLabel("production", state.player.faction));
+    setCommandCaption(ui.defenseTower, "Build", structureLabel("defenseTower", state.player.faction));
+    setCommandCaption(ui.extractor, "Build", structureLabel("extractor", state.player.faction));
+    setCommandCaption(ui.forge, "Build", structureLabel("forge", state.player.faction));
+    setCommandCaption(ui.heavyTech, "Build", structureLabel("heavyTech", state.player.faction));
+    setCommandCaption(ui.hangar, "Build", structureLabel("hangar", state.player.faction));
+    document.querySelectorAll("[data-command-group='barracks']").forEach((group) => { group.textContent = "Barracks"; });
+    document.querySelectorAll("[data-command-group='heavy-tech']").forEach((group) => { group.textContent = "Heavy Facility"; });
+    document.querySelectorAll("[data-command-group='hangar']").forEach((group) => { group.textContent = "Hangar"; });
+    document.querySelectorAll("[data-command-group='base']").forEach((group) => { group.textContent = "Main Base"; });
+    document.querySelectorAll("[data-command-group='forge']").forEach((group) => { group.textContent = "Forge"; });
+    document.querySelectorAll("[data-command-group='tower']").forEach((group) => { group.textContent = "Defence Tower"; });
   }
 
   let commandTooltipEventsReady = false;
@@ -4598,26 +4597,26 @@
       ui.copy.textContent = "Constructing: " + Math.ceil(Math.max(0, first.buildTime - first.buildProgress)) + " seconds remaining.";
     } else if (first.kind === "unit" && first.type === "worker") {
       ui.copy.textContent = hasBarracks
-        ? f.worker + " commands. Attacks ground only. Build another " + f.base + " at a distant Marshmallow field to expand."
-        : f.worker + " commands. Attacks ground only. Build " + f.base + ", " + f.supply + ", or " + f.production + ".";
+        ? f.worker + " commands. Attacks ground only. Build another Main Base at a distant Marshmallow field to expand."
+        : f.worker + " commands. Attacks ground only. Build a Main Base, Wool Capacity structure, or Barracks.";
     } else if (first.kind === "structure" && first.type === "base") {
-      ui.copy.textContent = f.base + " selected. Train " + f.worker + " here.";
+      ui.copy.textContent = "Main Base selected. Train " + f.worker + " here.";
     } else if (first.kind === "structure" && first.type === "production") {
       ui.copy.textContent = hasForge
-        ? f.production + " selected. Train " + f.soldier + ", " + f.heavy + ", " + f.elite + ", and " + f.support + " here."
-        : f.production + " selected. Build " + f.forge + " to unlock " + f.elite + " and " + f.support + ".";
+        ? "Barracks selected. Train " + f.soldier + ", " + f.heavy + ", " + f.elite + ", and " + f.support + " here."
+        : "Barracks selected. Build a Forge to unlock " + f.elite + " and " + f.support + ".";
     } else if (first.kind === "structure" && first.type === "heavyTech") {
       ui.copy.textContent = hasHeavyTech
-        ? f.heavyTech + " selected. Train " + f.extraHeavy + " here."
-        : f.heavyTech + " selected.";
+        ? "Heavy Facility selected. Train " + f.extraHeavy + " here."
+        : "Heavy Facility selected.";
     } else if (first.kind === "structure" && first.type === "hangar") {
-      ui.copy.textContent = hasHangar ? f.hangar + " selected. Train " + f.flyer + " here." : f.hangar + " selected.";
+      ui.copy.textContent = hasHangar ? "Hangar selected. Train " + f.flyer + " here." : "Hangar selected.";
     } else if (first.kind === "structure" && first.type === "defenseTower") {
       ui.copy.textContent = first.garrisonedWorkerId
-        ? f.defenseTower + " manned. Attacks air and ground. The " + f.worker + " cannot move while firing the cannon."
-        : f.defenseTower + " empty. Select " + f.worker + " and right-click it to man the cannon.";
+        ? "Defence Tower manned. Attacks air and ground. The " + f.worker + " cannot move while firing the cannon."
+        : "Defence Tower empty. Select " + f.worker + " and right-click it to man the cannon.";
     } else if (first.kind === "structure" && first.type === "forge") {
-      ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? f.forge + " selected. Elite armor is unlocked." : f.forge + " selected. Research armor upgrades here.");
+      ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else if (first.heroName) {
       ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + " Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
     } else {
