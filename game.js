@@ -2346,6 +2346,30 @@
     worker.ty = buildY;
   }
 
+  function assignResumeBuildTask(worker, structure) {
+    if (!worker || !structure || !structure.underConstruction) return false;
+    worker.buildTask = {
+      type: structure.type,
+      x: structure.x,
+      y: structure.y,
+      resourceId: structure.resourceId || null,
+      structureId: structure.id,
+      started: true
+    };
+    structure.builderId = worker.id;
+    structure.requiresBuilder = structure.faction !== "rainbow" && structure.faction !== "fire";
+    worker.target = null;
+    worker.harvest = null;
+    worker.repairTarget = null;
+    worker.garrisonTarget = null;
+    worker.attackMove = false;
+    worker.hold = false;
+    worker.patrol = null;
+    worker.tx = structure.x;
+    worker.ty = structure.y;
+    return true;
+  }
+
   function canDetachFromBuild(unit) {
     return unit && unit.type === "worker" && unit.buildTask && unit.buildTask.started && unit.faction === "rainbow";
   }
@@ -2691,6 +2715,8 @@
       applyGarrisonTower(owner, command.unitIds || [], Number(command.towerId));
     } else if (command.action === "repair") {
       applyRepair(owner, command.unitIds || [], Number(command.targetId), playerIndex);
+    } else if (command.action === "resumeBuild") {
+      applyResumeBuild(owner, command.unitIds || [], Number(command.structureId), playerIndex);
     } else if (command.action === "unloadTower") {
       unloadTower(owner, Number(command.towerId));
     } else if (command.action === "rally") {
@@ -2801,6 +2827,16 @@
     return null;
   }
 
+  function unfinishedBuildAt(wx, wy, owner = "player") {
+    const buildings = state.structures.filter((structure) => {
+      return structure.underConstruction && ownersAreAllied(owner, structure.owner) && structure.faction !== "fire";
+    });
+    for (let i = buildings.length - 1; i >= 0; i -= 1) {
+      if (Math.hypot(buildings[i].x - wx, buildings[i].y - wy) < footprintRadius(buildings[i].type) + 18) return buildings[i];
+    }
+    return null;
+  }
+
   function issueCommand(wx, wy) {
     const units = state.units.filter((u) => selected.has(u.id) && !u.garrisonedIn);
     if (!units.length) {
@@ -2822,6 +2858,14 @@
       else applyGarrisonTower("player", workers.map((u) => u.id), tower.id);
       state.effects.push({ x: tower.x, y: tower.y, r: 9, life: 0.9, color: "#f2bf4d", kind: "move" });
       say("Worker moving to man the defence tower.");
+      return;
+    }
+    const unfinishedBuild = unfinishedBuildAt(wx, wy, "player");
+    if (unfinishedBuild && workers.length) {
+      if (isNetworkGuest) sendNetworkCommand({ action: "resumeBuild", unitIds: workers.map((u) => u.id), structureId: unfinishedBuild.id });
+      else applyResumeBuild("player", workers.map((u) => u.id), unfinishedBuild.id);
+      state.effects.push({ x: unfinishedBuild.x, y: unfinishedBuild.y, r: 9, life: 0.9, color: "#f2bf4d", kind: "move" });
+      say("Worker moving to continue construction.");
       return;
     }
     const repairTarget = repairTargetAt(wx, wy, "player");
@@ -3094,6 +3138,23 @@
       unit.repairTarget = target.id;
       unit.tx = stop.x;
       unit.ty = stop.y;
+    });
+  }
+
+  function applyResumeBuild(owner, unitIds, structureId, sourcePlayerIndex = null) {
+    const structure = state.structures.find((item) => {
+      return item.id === structureId && item.underConstruction && !isHostileTo(owner, item, sourcePlayerIndex) && item.faction !== "fire";
+    });
+    if (!structure) return;
+    const workers = state.units.filter((unit) => {
+      return unitIds.includes(unit.id) && unit.owner === owner && samePlayerSlot(unit, sourcePlayerIndex) && unit.type === "worker" && !unit.garrisonedIn;
+    });
+    workers.forEach((worker) => {
+      if (worker.faction === "rainbow") {
+        if (worker.owner === "player") say("Rainbow buildings warp in by themselves.");
+        return;
+      }
+      assignResumeBuildTask(worker, structure);
     });
   }
 
