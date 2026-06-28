@@ -2359,12 +2359,15 @@
   function startConstruction(worker) {
     if (!worker.buildTask || worker.buildTask.started) return;
     const task = worker.buildTask;
-    const structure = addStructure(worker.owner, sideFor(worker.owner).faction, task.type, task.x, task.y, worker.playerIndex);
+    const workerFaction = sideFor(worker.owner).faction;
+    const structure = addStructure(worker.owner, workerFaction, task.type, task.x, task.y, worker.playerIndex);
     structure.resourceId = task.resourceId;
     structure.underConstruction = true;
     structure.buildTime = buildTimes[task.type];
     structure.buildProgress = 0;
     structure.buildStarted = true;
+    structure.builderId = worker.id;
+    structure.requiresBuilder = workerFaction !== "rainbow" && workerFaction !== "fire";
     structure.hp = Math.max(1, Math.floor(structure.maxHp * 0.1));
     task.structureId = structure.id;
     task.started = true;
@@ -2372,15 +2375,20 @@
       const resource = state.resources.find((r) => r.id === task.resourceId);
       if (resource) resource.coveredBy = structure.id;
     }
-    if (sideFor(worker.owner).faction === "fire") {
+    if (workerFaction === "fire") {
       state.units = state.units.filter((u) => u.id !== worker.id);
       selected.delete(worker.id);
       sideFor(worker.owner).woolUsed = Math.max(0, sideFor(worker.owner).woolUsed - stats.worker.wool);
       if (worker.owner === "player") say("The Kindling Lamb becomes the building.");
-    } else {
+    } else if (workerFaction === "rainbow") {
       const exit = constructionExitPoint(structure, worker);
+      worker.buildTask = null;
       worker.tx = exit.x;
       worker.ty = exit.y;
+      if (worker.owner === "player") say("Rainbow construction started. The Dreamer Lamb can move away.");
+    } else {
+      worker.tx = task.x;
+      worker.ty = task.y;
       if (worker.owner === "player") say("Construction started.");
     }
   }
@@ -2441,6 +2449,10 @@
   function updateConstructions(dt) {
     state.structures.forEach((structure) => {
       if (!structure.underConstruction || !structure.buildStarted) return;
+      if (structure.requiresBuilder) {
+        const builder = state.units.find((unit) => unit.id === structure.builderId && unit.buildTask && unit.buildTask.structureId === structure.id);
+        if (!builder || Math.hypot(builder.x - structure.x, builder.y - structure.y) > footprintRadius(structure.type) + stats.worker.radius + 42) return;
+      }
       structure.buildProgress += dt;
       structure.hp = Math.max(1, Math.floor(structure.maxHp * Math.min(1, structure.buildProgress / structure.buildTime)));
       if (structure.buildProgress >= structure.buildTime) completeConstruction(structure);
