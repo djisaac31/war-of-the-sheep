@@ -2346,6 +2346,16 @@
     worker.ty = buildY;
   }
 
+  function canDetachFromBuild(unit) {
+    return unit && unit.type === "worker" && unit.buildTask && unit.buildTask.started && unit.faction === "rainbow";
+  }
+
+  function detachFromBuild(unit) {
+    if (!canDetachFromBuild(unit)) return false;
+    unit.buildTask = null;
+    return true;
+  }
+
   function startConstruction(worker) {
     if (!worker.buildTask || worker.buildTask.started) return;
     const task = worker.buildTask;
@@ -2827,6 +2837,8 @@
     units.forEach((unit, index) => {
       const offset = formationOffset(index, units.length);
       if (target && target.kind && isHostileTo(owner, target, unit.playerIndex) && canAttackTarget(unit, target)) {
+        if (unit.buildTask && !canDetachFromBuild(unit)) return;
+        detachFromBuild(unit);
         unit.target = target.id;
         unit.garrisonTarget = null;
         unit.attackMove = false;
@@ -2840,6 +2852,8 @@
         unit.tx = stop.x;
         unit.ty = stop.y;
       } else if (target && target.amount && target.type === "marshmallow" && unit.type === "worker") {
+        if (unit.buildTask && !canDetachFromBuild(unit)) return;
+        detachFromBuild(unit);
         unit.harvest = target.id;
         unit.target = null;
         unit.garrisonTarget = null;
@@ -2857,6 +2871,11 @@
         if (target && target.kind && isHostileTo(owner, target, unit.playerIndex) && !canAttackTarget(unit, target) && owner === "player") {
           say(unitLabel(unit.type, unit.faction) + " cannot attack " + (stats[target.type].airborne ? "air" : "ground") + " targets.");
         }
+        if (unit.buildTask && !canDetachFromBuild(unit)) {
+          if (owner === "player" && unit.faction !== "rainbow") say(unitLabel(unit.type, unit.faction) + " must finish this building before moving away.");
+          return;
+        }
+        detachFromBuild(unit);
         const move = commandMovePoint(unit, wx, wy, offset);
         unit.target = null;
         unit.harvest = null;
@@ -2978,9 +2997,13 @@
     if (!tower || tower.garrisonedWorkerId) return;
     const worker = state.units.find((u) => unitIds.includes(u.id) && u.owner === owner && u.type === "worker" && !u.garrisonedIn);
     if (!worker) return;
+    if (worker.buildTask && !canDetachFromBuild(worker)) {
+      if (owner === "player" && worker.faction !== "rainbow") say(unitLabel(worker.type, worker.faction) + " must finish this building before moving away.");
+      return;
+    }
+    detachFromBuild(worker);
     worker.target = null;
     worker.harvest = null;
-    worker.buildTask = null;
     worker.repairTarget = null;
     worker.attackMove = false;
     worker.patrol = null;
@@ -3042,10 +3065,14 @@
     });
     if (!target) return;
     state.units.filter((unit) => unitIds.includes(unit.id) && unit.owner === owner && samePlayerSlot(unit, sourcePlayerIndex) && unit.type === "worker" && !unit.garrisonedIn).forEach((unit, index, workers) => {
+      if (unit.buildTask && !canDetachFromBuild(unit)) {
+        if (owner === "player" && unit.faction !== "rainbow") say(unitLabel(unit.type, unit.faction) + " must finish this building before moving away.");
+        return;
+      }
+      detachFromBuild(unit);
       const stop = attackStopPoint(unit, target, index, workers.length);
       unit.target = null;
       unit.harvest = null;
-      unit.buildTask = null;
       unit.garrisonTarget = null;
       unit.attackMove = false;
       unit.attackX = null;
@@ -3662,13 +3689,14 @@
       ui.scoreRematch.textContent = result === "victory" && storyChapter < 5 ? "Next Mission" : result === "victory" ? "Back to Lobby" : "Try Again";
     } else if (tutorialMode) {
       const nextFaction = tutorialFactions[tutorialFactionIndex + 1];
+      const tutorialName = tutorialLesson === 2 ? "Advanced Tutorial" : "Tutorial";
       if (result === "victory" && nextFaction) {
-        ui.scoreTitle.textContent = "Tutorial Complete";
-        ui.scoreSummary.textContent = "Great work. Next lesson: " + nextFaction + ".";
+        ui.scoreTitle.textContent = tutorialName + " Complete";
+        ui.scoreSummary.textContent = "Great work. Next " + tutorialName.toLowerCase() + " race: " + nextFaction + ".";
         ui.scoreRematch.textContent = "Next Race";
       } else if (result === "victory") {
-        ui.scoreTitle.textContent = "Tutorial Finished";
-        ui.scoreSummary.textContent = "You completed Rainbow, Mech, and Fire Sheep training.";
+        ui.scoreTitle.textContent = tutorialName + " Finished";
+        ui.scoreSummary.textContent = "You completed Rainbow, Mech, and Fire Sheep " + (tutorialLesson === 2 ? "advanced training." : "training.");
         ui.scoreRematch.textContent = "Back to Lobby";
       } else {
         ui.scoreRematch.textContent = "Try Again";
@@ -3686,7 +3714,7 @@
     return code;
   }
 
-  function launchTutorialRace(index) {
+  function launchTutorialRace(index, lesson = tutorialLesson) {
     const faction = tutorialFactions[index] || tutorialFactions[0];
     const opponent = faction === "Mech Sheep" ? "Fire Sheep" : "Mech Sheep";
     const code = makeTutorialRoomCode();
@@ -3696,6 +3724,7 @@
       maxPlayers: 2,
       training: true,
       tutorial: true,
+      tutorialLesson: lesson,
       difficulty: "easy",
       createdAt: new Date().toISOString(),
       players: [
@@ -3707,7 +3736,7 @@
     rooms[code] = room;
     localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
     localStorage.setItem("magic-sheep-tutorial-race", String(index));
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1";
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&tutorial=1&lesson=" + lesson;
   }
 
   function launchStoryChapter(chapter) {
