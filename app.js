@@ -29,10 +29,20 @@
   const storyStart = document.querySelector("#story-start");
   const campaignSelect = document.querySelector("#campaign-select");
   const storyDifficulty = document.querySelector("#story-difficulty");
+  const profileForm = document.querySelector("#profile-form");
+  const profileUsername = document.querySelector("#profile-username");
+  const profilePin = document.querySelector("#profile-pin");
+  const profileName = document.querySelector("#profile-name");
+  const profileSummary = document.querySelector("#profile-summary");
+  const profileStatus = document.querySelector("#profile-status");
+  const profileCreate = document.querySelector("#profile-create");
+  const profileLogout = document.querySelector("#profile-logout");
 
   let activeRoom = null;
   let serverOnline = false;
   let lobbyPoll = null;
+  const ACCOUNTS_KEY = "magic-sheep-accounts";
+  const CURRENT_PROFILE_KEY = "magic-sheep-current-profile";
   const mapCatalog = [
     { name: "Candy Meadow", players: 2 },
     { name: "Marshmallow Crossing", players: 2 },
@@ -60,6 +70,87 @@
 
   function writeRooms(rooms) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+  }
+
+  function readAccounts() {
+    try {
+      return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "{}");
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function writeAccounts(accounts) {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  }
+
+  function currentProfile() {
+    try {
+      return JSON.parse(localStorage.getItem(CURRENT_PROFILE_KEY) || "null");
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function profileKey(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+
+  function fillCommanderNames(name) {
+    ["host-name", "join-name", "train-name"].forEach(function (id) {
+      const input = document.getElementById(id);
+      if (input && !input.value) input.value = name;
+    });
+  }
+
+  function renderProfile() {
+    const profile = currentProfile();
+    if (!profile) {
+      profileName.textContent = "Guest";
+      profileSummary.textContent = "Replays save locally.";
+      profileLogout.disabled = true;
+      return;
+    }
+    const statsRecord = JSON.parse(localStorage.getItem("magic-sheep-profile-stats-" + profileKey(profile.name)) || "{}");
+    profileName.textContent = profile.name;
+    profileSummary.textContent = (statsRecord.matches || 0) + " matches, " + (statsRecord.wins || 0) + " wins.";
+    profileLogout.disabled = false;
+    fillCommanderNames(profile.name);
+  }
+
+  function createProfile() {
+    const name = profileUsername.value.trim();
+    const pin = profilePin.value.trim();
+    if (!name || !pin) {
+      profileStatus.textContent = "Enter a name and PIN.";
+      return;
+    }
+    const accounts = readAccounts();
+    const key = profileKey(name);
+    if (accounts[key]) {
+      profileStatus.textContent = "That commander already exists.";
+      return;
+    }
+    accounts[key] = { name, pin, createdAt: new Date().toISOString() };
+    writeAccounts(accounts);
+    localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name }));
+    profileStatus.textContent = "Commander created.";
+    profilePin.value = "";
+    renderProfile();
+  }
+
+  function loginProfile() {
+    const name = profileUsername.value.trim();
+    const pin = profilePin.value.trim();
+    const account = readAccounts()[profileKey(name)];
+    if (!account || account.pin !== pin) {
+      profileStatus.textContent = "Name or PIN did not match.";
+      return;
+    }
+    localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name: account.name }));
+    profileStatus.textContent = "Logged in.";
+    profilePin.value = "";
+    renderProfile();
   }
 
   function saveRoom(room) {
@@ -938,6 +1029,19 @@
     returnToHome("You left the lobby.");
   });
 
+  profileForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    loginProfile();
+  });
+
+  profileCreate.addEventListener("click", createProfile);
+
+  profileLogout.addEventListener("click", function () {
+    localStorage.removeItem(CURRENT_PROFILE_KEY);
+    profileStatus.textContent = "Playing as guest.";
+    renderProfile();
+  });
+
   addAi.addEventListener("click", async function () {
     if (!activeRoom || activeRoom.players.length >= activeRoom.maxPlayers) return;
     const nextTeam = slotTeam(activeRoom.matchType || "1v1", activeRoom.players.length);
@@ -1036,5 +1140,6 @@
 
   fillMapSelect(mapName, Number(playerCount.value));
   fillMapSelect(trainingMap, 2);
+  renderProfile();
   detectServer().then(loadRoomFromUrl);
 })();

@@ -573,6 +573,41 @@ button {
   font-weight: 850;
 }
 
+.score-timeline {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #d8cfb6;
+  border-radius: 6px;
+  background: #fffdf7;
+  margin: 0 0 18px;
+  padding: 12px;
+}
+
+.score-timeline__item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: #263e36;
+}
+
+.score-timeline__time {
+  color: #8d63dc;
+  font-weight: 950;
+}
+
+.score-timeline__item strong {
+  display: block;
+  font-size: 0.96rem;
+}
+
+.score-timeline__item small {
+  color: #5f746a;
+  font-weight: 800;
+}
+
 .score-actions {
   display: flex;
   gap: 10px;

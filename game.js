@@ -43,6 +43,7 @@
     scoreWorkers: document.querySelector("#score-workers"),
     scoreArmy: document.querySelector("#score-army"),
     scoreRecord: document.querySelector("#score-record"),
+    scoreTimeline: document.querySelector("#score-timeline"),
     scoreReview: document.querySelector("#score-review"),
     campaignReward: document.querySelector("#campaign-reward"),
     scoreSpectate: document.querySelector("#score-spectate"),
@@ -352,6 +353,15 @@
       enemiesDestroyed: 0,
       structuresBuilt: 0,
       marshmallowsGathered: 0
+    },
+    timeline: [],
+    milestones: {
+      firstBarracks: false,
+      firstArmy: false,
+      firstElite: false,
+      firstExpansion: false,
+      firstAttackMove: false,
+      firstEnemyBaseDown: false
     },
     units: [],
     structures: [],
@@ -2150,6 +2160,13 @@
       selected.clear();
       selected.add(unit.id);
       say(job.type === "worker" ? "Worker ready." : unitLabel(job.type, job.faction) + " ready.");
+      if (job.type !== "worker") {
+        recordMilestone(
+          job.type === "elite" || job.type === "extraHeavy" ? "firstElite" : "firstArmy",
+          job.type === "elite" || job.type === "extraHeavy" ? "Elite unit trained" : "First army unit trained",
+          unitLabel(job.type, job.faction) + " joined the flock."
+        );
+      }
     }
   }
 
@@ -2457,6 +2474,11 @@
       else if (structure.type === "hangar") say(factionData[structure.faction].hangar + " complete. " + factionData[structure.faction].flyer + " training unlocked.");
       else if (structure.type === "defenseTower") say(factionData[structure.faction].defenseTower + " complete. Right-click it with a worker to man the cannon.");
       else say(factionData[structure.faction].production + " complete. " + factionData[structure.faction].soldier + " training unlocked.");
+      if (structure.type === "barracks") recordMilestone("firstBarracks", "First production building", factionData[structure.faction].production + " finished.");
+      if (structure.type === "base") recordMilestone("firstExpansion", "Expansion secured", "A new main base finished at another Marshmallow field.");
+      if (structure.type === "forge") recordTimeline("Tech unlocked", factionData[structure.faction].forge + " opened upgrades.");
+      if (structure.type === "hangar") recordTimeline("Air tech unlocked", factionData[structure.faction].hangar + " can train flyers.");
+      if (structure.type === "heavyTech") recordTimeline("Heavy tech unlocked", factionData[structure.faction].heavyTech + " can build extra heavy units.");
     } else if (structure.type === "supply") {
       state.enemy.woolMax += 8;
     }
@@ -2958,11 +2980,13 @@
       sendNetworkCommand({ action: "attackMove", unitIds: units.map((u) => u.id), x: wx, y: wy });
       state.effects.push({ x: wx, y: wy, r: 8, life: 1.1, color: "#ffef7a", kind: "attack" });
       commandMode = null;
+      recordMilestone("firstAttackMove", "Attack-move issued", units.length + " unit" + (units.length === 1 ? "" : "s") + " pushed across the map.");
       say("Attack move issued.");
       return;
     }
     applyAttackMove("player", units.map((u) => u.id), wx, wy);
     if (tutorialMode) tutorial.attackMoveIssued = true;
+    recordMilestone("firstAttackMove", "Attack-move issued", units.length + " unit" + (units.length === 1 ? "" : "s") + " pushed across the map.");
     state.effects.push({ x: wx, y: wy, r: 8, life: 1.1, color: "#ffef7a", kind: "attack" });
     commandMode = null;
     say("Attack move issued.");
@@ -3664,7 +3688,10 @@
         const resource = state.resources.find((r) => r.id === s.resourceId);
         if (resource) resource.coveredBy = null;
       }
-      if (s.owner === "enemy") state.stats.enemiesDestroyed += 1;
+      if (s.owner === "enemy") {
+        state.stats.enemiesDestroyed += 1;
+        if (s.type === "base") recordMilestone("firstEnemyBaseDown", "Enemy base destroyed", "A rival main base fell.");
+      }
       return false;
     });
     updateEffects();
@@ -3688,10 +3715,53 @@
     return minutes + ":" + rest;
   }
 
+  function recordTimeline(title, detail) {
+    if (!state.setupComplete && state.elapsed < 1) return;
+    state.timeline.push({
+      time: Math.floor(state.elapsed),
+      title,
+      detail: detail || ""
+    });
+    if (state.timeline.length > 24) state.timeline.shift();
+  }
+
+  function recordMilestone(key, title, detail) {
+    if (state.milestones[key]) return;
+    state.milestones[key] = true;
+    recordTimeline(title, detail);
+  }
+
+  function activeProfileName() {
+    try {
+      const profile = JSON.parse(localStorage.getItem("magic-sheep-current-profile") || "null");
+      return profile && profile.name ? String(profile.name) : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function saveReplayRecord(record) {
+    const name = activeProfileName();
+    const key = name ? "magic-sheep-replays-" + name.toLowerCase() : "magic-sheep-replays-guest";
+    const profileKey = name ? "magic-sheep-profile-stats-" + name.toLowerCase() : "";
+    const replays = JSON.parse(localStorage.getItem(key) || "[]");
+    replays.unshift(record);
+    localStorage.setItem(key, JSON.stringify(replays.slice(0, 20)));
+    if (profileKey) {
+      const statsRecord = JSON.parse(localStorage.getItem(profileKey) || "{}");
+      statsRecord.matches = (statsRecord.matches || 0) + 1;
+      statsRecord.wins = (statsRecord.wins || 0) + (record.result === "victory" ? 1 : 0);
+      statsRecord.enemiesDestroyed = (statsRecord.enemiesDestroyed || 0) + record.enemiesDestroyed;
+      statsRecord.bestTime = !statsRecord.bestTime || record.time < statsRecord.bestTime ? record.time : statsRecord.bestTime;
+      localStorage.setItem(profileKey, JSON.stringify(statsRecord));
+    }
+  }
+
   function endMatch(result) {
     if (state.ended) return;
     state.ended = true;
     state.result = result;
+    recordTimeline(result === "victory" ? "Victory" : "Defeat", result === "victory" ? "Your team won the meadow." : "Your team was defeated.");
     if (isNetworkHost) publishNetworkSnapshot();
     showScoreScreen(result);
   }
@@ -3706,10 +3776,13 @@
       resources: state.stats.marshmallowsGathered,
       difficulty: aiDifficulty,
       chapter: storyMode ? storyChapter : null,
+      faction: factionData[state.player.faction].name,
+      timeline: state.timeline.slice(),
       playedAt: new Date().toISOString()
     };
     try {
       localStorage.setItem("magic-sheep-last-match", JSON.stringify(record));
+      saveReplayRecord(record);
       if (storyMode && result === "victory") {
         const records = JSON.parse(localStorage.getItem("magic-sheep-story-records") || "{}");
         const old = records[storyChapter];
@@ -3756,6 +3829,27 @@
       ui.scoreRecord.textContent = storyMode
         ? "Mission " + storyChapter + " record saved on " + aiDifficulty.toUpperCase() + " difficulty."
         : "Match review saved: " + record.enemiesDestroyed + " enemies destroyed in " + formatTime(record.time) + ".";
+    }
+    if (ui.scoreTimeline) {
+      ui.scoreTimeline.innerHTML = "";
+      const events = record.timeline && record.timeline.length ? record.timeline : [
+        { time: 0, title: "Match started", detail: "No replay events were recorded before the match ended." }
+      ];
+      events.slice(-10).forEach((event) => {
+        const item = document.createElement("div");
+        const time = document.createElement("span");
+        const body = document.createElement("div");
+        const title = document.createElement("strong");
+        const detail = document.createElement("small");
+        item.className = "score-timeline__item";
+        time.className = "score-timeline__time";
+        time.textContent = formatTime(event.time || 0);
+        title.textContent = event.title || "Replay event";
+        detail.textContent = event.detail || "";
+        body.append(title, detail);
+        item.append(time, body);
+        ui.scoreTimeline.append(item);
+      });
     }
     ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
     if (storyMode) {

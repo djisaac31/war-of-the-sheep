@@ -47,7 +47,7 @@ select {
   z-index: 20;
   top: 12px;
   display: grid;
-  grid-template-columns: minmax(180px, 260px) 1fr;
+  grid-template-columns: minmax(180px, 230px) minmax(420px, 1fr) minmax(260px, 330px);
   gap: 16px;
   align-items: center;
   margin-bottom: 18px;
@@ -431,6 +431,66 @@ body.has-room .lobby > [role="tabpanel"] {
   border-color: transparent;
   background: #dff4e6;
   box-shadow: inset 0 0 0 2px var(--teal), 0 8px 20px rgba(36, 51, 46, 0.1);
+}
+
+.profile-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px;
+}
+
+.profile-card__label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.profile-card strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.profile-card small,
+.profile-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.profile-status {
+  min-height: 1em;
+  margin: 0;
+}
+
+.profile-form {
+  display: grid;
+  grid-template-columns: 1fr 0.72fr auto auto auto;
+  gap: 6px;
+}
+
+.profile-form input,
+.profile-form button {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fffdf7;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  padding: 0 8px;
+}
+
+.profile-form button {
+  cursor: pointer;
+  background: #263e36;
+  color: #fffaf0;
 }
 
 .field {

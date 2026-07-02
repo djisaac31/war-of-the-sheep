@@ -36,6 +36,22 @@
             <small>Learn RTS</small>
           </button>
         </div>
+
+        <section class="profile-card" aria-label="Commander profile">
+          <div>
+            <span class="profile-card__label">Commander</span>
+            <strong id="profile-name">Guest</strong>
+            <small id="profile-summary">Replays save locally.</small>
+          </div>
+          <form id="profile-form" class="profile-form">
+            <input id="profile-username" type="text" maxlength="18" placeholder="Name" autocomplete="username">
+            <input id="profile-pin" type="password" maxlength="12" placeholder="PIN" autocomplete="current-password">
+            <button id="profile-login" type="submit">Log In</button>
+            <button id="profile-create" type="button">Create</button>
+            <button id="profile-logout" type="button">Log Out</button>
+          </form>
+          <p id="profile-status" class="profile-status"></p>
+        </section>
       </nav>
 
       <section class="hero" aria-labelledby="page-title">
