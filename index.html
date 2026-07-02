@@ -35,6 +35,10 @@
             <span>Tutorial</span>
             <small>Learn RTS</small>
           </button>
+          <button class="mode-button" id="mode-replays" type="button" data-panel="replay-panel" role="tab" aria-selected="false">
+            <span>Replays</span>
+            <small>Review games</small>
+          </button>
         </div>
 
         <section class="profile-card" aria-label="Commander profile">
@@ -169,7 +173,20 @@
                   <option value="nightmare">Nightmare</option>
                 </select>
               </label>
+
+              <label class="field">
+                <span>AI Personality</span>
+                <select id="host-ai-style" name="hostAiStyle">
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="rusher">Rusher</option>
+                  <option value="defender">Defender</option>
+                  <option value="expander">Expander</option>
+                  <option value="tech">Tech Player</option>
+                </select>
+              </label>
             </div>
+
+            <div class="map-preview" id="map-preview">Choose a map to preview expansions, bases, and player count.</div>
 
             <button class="button button--primary" type="submit" data-testid="host-game-button">
               Create Room Code
@@ -262,6 +279,17 @@
               <label class="field">
                 <span>Map</span>
                 <select id="training-map" name="trainingMap">
+                </select>
+              </label>
+
+              <label class="field">
+                <span>AI Personality</span>
+                <select id="training-ai-style" name="trainingAiStyle">
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="rusher">Rusher</option>
+                  <option value="defender">Defender</option>
+                  <option value="expander">Expander</option>
+                  <option value="tech">Tech Player</option>
                 </select>
               </label>
             </div>
@@ -377,6 +405,14 @@
                 <option value="nightmare">Nightmare</option>
               </select>
             </label>
+            <label class="field campaign-difficulty">
+              <span>Save Slot</span>
+              <select id="story-save-slot" name="storySaveSlot">
+                <option value="1">Save Slot 1</option>
+                <option value="2">Save Slot 2</option>
+                <option value="3">Save Slot 3</option>
+              </select>
+            </label>
             <button class="button button--start" id="story-start" type="button">Continue Campaign</button>
           </div>
 
@@ -406,6 +442,17 @@
               <strong>Wolf Alpha</strong>
               <small>Final assault with every hero.</small>
             </button>
+          </div>
+        </div>
+
+        <div class="panel panel--flow is-hidden" id="replay-panel" role="tabpanel" aria-labelledby="mode-replays" hidden>
+          <div class="panel__heading">
+            <p class="eyebrow">Saved Locally</p>
+            <h2>Replay Viewer</h2>
+          </div>
+
+          <div class="replay-list" id="replay-list">
+            <div class="empty-state">Finish a match to save replay history.</div>
           </div>
         </div>
 

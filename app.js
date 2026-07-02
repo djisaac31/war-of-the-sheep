@@ -20,6 +20,7 @@
   const quitLobby = document.querySelector("#quit-lobby");
   const roomCodeInput = document.querySelector("#room-code-input");
   const mapName = document.querySelector("#map-name");
+  const mapPreview = document.querySelector("#map-preview");
   const playerCount = document.querySelector("#player-count");
   const trainingMap = document.querySelector("#training-map");
   const matchType = document.querySelector("#match-type");
@@ -29,6 +30,8 @@
   const storyStart = document.querySelector("#story-start");
   const campaignSelect = document.querySelector("#campaign-select");
   const storyDifficulty = document.querySelector("#story-difficulty");
+  const storySaveSlot = document.querySelector("#story-save-slot");
+  const replayList = document.querySelector("#replay-list");
   const profileForm = document.querySelector("#profile-form");
   const profileUsername = document.querySelector("#profile-username");
   const profilePin = document.querySelector("#profile-pin");
@@ -116,6 +119,61 @@
     profileSummary.textContent = (statsRecord.matches || 0) + " matches, " + (statsRecord.wins || 0) + " wins.";
     profileLogout.disabled = false;
     fillCommanderNames(profile.name);
+    renderReplays();
+  }
+
+  function activeReplayKey() {
+    const profile = currentProfile();
+    return profile && profile.name ? "magic-sheep-replays-" + profileKey(profile.name) : "magic-sheep-replays-guest";
+  }
+
+  function formatReplayTime(seconds) {
+    const whole = Math.floor(Number(seconds) || 0);
+    return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+  }
+
+  function renderReplays() {
+    if (!replayList) return;
+    let records = [];
+    try {
+      records = JSON.parse(localStorage.getItem(activeReplayKey()) || "[]");
+    } catch (_error) {
+      records = [];
+    }
+    replayList.innerHTML = "";
+    if (!records.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "Finish a match to save replay history.";
+      replayList.append(empty);
+      return;
+    }
+    records.slice(0, 12).forEach(function (record) {
+      const card = document.createElement("article");
+      const head = document.createElement("div");
+      const title = document.createElement("strong");
+      const meta = document.createElement("div");
+      const timeline = document.createElement("div");
+      card.className = "replay-card";
+      head.className = "replay-card__head";
+      meta.className = "replay-card__meta";
+      timeline.className = "replay-card__timeline";
+      title.textContent = (record.result === "victory" ? "Victory" : "Defeat") + " - " + (record.faction || "Magic Sheep");
+      meta.textContent = formatReplayTime(record.time) + " | " + (record.difficulty || "normal").toUpperCase() + " | " + (record.enemiesDestroyed || 0) + " enemies destroyed";
+      (record.timeline || []).slice(-4).forEach(function (event) {
+        const row = document.createElement("span");
+        row.textContent = formatReplayTime(event.time) + " - " + event.title;
+        timeline.append(row);
+      });
+      head.append(title, meta);
+      card.append(head, timeline);
+      replayList.append(card);
+    });
+  }
+
+  function storySlotKey(name) {
+    const slot = storySaveSlot ? storySaveSlot.value : "1";
+    return "magic-sheep-story-" + name + "-slot-" + slot;
   }
 
   function createProfile() {
@@ -137,6 +195,7 @@
     profileStatus.textContent = "Commander created.";
     profilePin.value = "";
     renderProfile();
+    renderReplays();
   }
 
   function loginProfile() {
@@ -151,6 +210,7 @@
     profileStatus.textContent = "Logged in.";
     profilePin.value = "";
     renderProfile();
+    renderReplays();
   }
 
   function saveRoom(room) {
@@ -304,6 +364,7 @@
       select.append(option);
     });
     if (maps.some(function (map) { return map.name === current; })) select.value = current;
+    if (select === mapName) updateMapPreview();
   }
 
   function selectedMapPlayers(name) {
@@ -311,6 +372,19 @@
       return item.name === name;
     });
     return map ? map.players : 2;
+  }
+
+  function updateMapPreview() {
+    if (!mapPreview) return;
+    const map = mapCatalog.find(function (item) {
+      return item.name === mapName.value;
+    });
+    if (!map) {
+      mapPreview.textContent = "Choose a map to preview expansions, bases, and player count.";
+      return;
+    }
+    const expansions = Math.max(2, map.players + 2);
+    mapPreview.textContent = map.name + ": " + map.players + " player starts, about " + expansions + " expansion fields, and room for " + matchLabel(matchType.value) + ".";
   }
 
   function slotTeam(type, index) {
@@ -654,6 +728,10 @@
       if (button.dataset.panel === "train-panel") status.textContent = "Pick an AI difficulty and map.";
       if (button.dataset.panel === "tutorial-panel") status.textContent = "Learn the first build order, then practice against AI.";
       if (button.dataset.panel === "story-panel") status.textContent = "Play the single player story campaign in Rainbow Meadow.";
+      if (button.dataset.panel === "replay-panel") {
+        renderReplays();
+        status.textContent = "Review saved match timelines for this commander.";
+      }
     });
   });
 
@@ -667,7 +745,7 @@
 
   function launchStoryChapter(chapter) {
     const safeChapter = Math.max(1, Math.min(5, Number(chapter) || 1));
-    const difficulty = storyDifficulty ? storyDifficulty.value : (localStorage.getItem("magic-sheep-story-difficulty") || "normal");
+    const difficulty = storyDifficulty ? storyDifficulty.value : (localStorage.getItem(storySlotKey("difficulty")) || "normal");
     const code = makeRoomCode();
     const room = {
       code,
@@ -676,6 +754,7 @@
       training: true,
       story: true,
       storyChapter: safeChapter,
+      storySlot: storySaveSlot ? storySaveSlot.value : "1",
       difficulty,
       createdAt: new Date().toISOString(),
       players: [
@@ -697,15 +776,17 @@
 
     saveRoom(room);
     renderRoom(room);
+    localStorage.setItem(storySlotKey("chapter"), String(safeChapter));
+    localStorage.setItem(storySlotKey("difficulty"), difficulty);
     localStorage.setItem("magic-sheep-story-chapter", String(safeChapter));
     localStorage.setItem("magic-sheep-story-difficulty", difficulty);
     window.history.replaceState({}, "", "?room=" + encodeURIComponent(code));
     status.textContent = "Story campaign mission " + safeChapter + " ready.";
-    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + safeChapter + "&difficulty=" + encodeURIComponent(difficulty);
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1&story=1&chapter=" + safeChapter + "&slot=" + encodeURIComponent(storySaveSlot ? storySaveSlot.value : "1") + "&difficulty=" + encodeURIComponent(difficulty);
   }
 
   function renderCampaignProgress() {
-    const saved = Math.max(1, Math.min(5, Number(localStorage.getItem("magic-sheep-story-chapter") || 1)));
+    const saved = Math.max(1, Math.min(5, Number(localStorage.getItem(storySlotKey("chapter")) || 1)));
     document.querySelectorAll("[data-story-chapter]").forEach(function (button) {
       button.classList.toggle("is-current", Number(button.dataset.storyChapter) === saved);
     });
@@ -713,13 +794,23 @@
   }
 
   storyStart.addEventListener("click", function () {
-    launchStoryChapter(localStorage.getItem("magic-sheep-story-chapter") || 1);
+    launchStoryChapter(localStorage.getItem(storySlotKey("chapter")) || 1);
   });
 
   if (storyDifficulty) {
-    storyDifficulty.value = localStorage.getItem("magic-sheep-story-difficulty") || "normal";
+    storyDifficulty.value = localStorage.getItem(storySlotKey("difficulty")) || "normal";
     storyDifficulty.addEventListener("change", function () {
-      localStorage.setItem("magic-sheep-story-difficulty", storyDifficulty.value);
+      localStorage.setItem(storySlotKey("difficulty"), storyDifficulty.value);
+    });
+  }
+
+  if (storySaveSlot) {
+    storySaveSlot.value = localStorage.getItem("magic-sheep-story-active-slot") || "1";
+    storySaveSlot.addEventListener("change", function () {
+      localStorage.setItem("magic-sheep-story-active-slot", storySaveSlot.value);
+      if (storyDifficulty) storyDifficulty.value = localStorage.getItem(storySlotKey("difficulty")) || "normal";
+      renderCampaignProgress();
+      status.textContent = "Story save slot " + storySaveSlot.value + " selected.";
     });
   }
 
@@ -809,6 +900,7 @@
             maxPlayers,
             matchType: chosenMatchType,
             difficulty: formData.get("hostAiDifficulty") || "normal",
+            aiStyle: formData.get("hostAiStyle") || "balanced",
             player: {
               name: formData.get("hostName") || "Host Shepherd",
               faction: getSelectedValue(hostForm, "hostFaction"),
@@ -840,6 +932,7 @@
       matchType: chosenMatchType,
       training: false,
       difficulty: formData.get("hostAiDifficulty") || "normal",
+      aiStyle: formData.get("hostAiStyle") || "balanced",
       createdAt: new Date().toISOString(),
       players: [
         {
@@ -866,15 +959,19 @@
     status.textContent = "Showing " + count + "-player maps.";
   });
 
+  mapName.addEventListener("change", updateMapPreview);
+
   matchType.addEventListener("change", function () {
     const neededPlayers = matchPlayerCount(matchType.value);
     if (matchType.value !== "ffa") {
       playerCount.value = String(neededPlayers);
       fillMapSelect(mapName, neededPlayers);
       status.textContent = matchLabel(matchType.value) + " uses a " + neededPlayers + "-player map.";
+      updateMapPreview();
       return;
     }
     status.textContent = "Match type set to " + matchLabel(matchType.value) + ".";
+    updateMapPreview();
   });
 
   joinForm.addEventListener("submit", async function (event) {
@@ -966,6 +1063,7 @@
       maxPlayers: 2,
       training: true,
       difficulty: formData.get("aiDifficulty"),
+      aiStyle: formData.get("trainingAiStyle") || "balanced",
       createdAt: new Date().toISOString(),
       players: [
         {
@@ -1040,6 +1138,7 @@
     localStorage.removeItem(CURRENT_PROFILE_KEY);
     profileStatus.textContent = "Playing as guest.";
     renderProfile();
+    renderReplays();
   });
 
   addAi.addEventListener("click", async function () {

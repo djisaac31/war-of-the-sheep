@@ -44,12 +44,14 @@
     scoreArmy: document.querySelector("#score-army"),
     scoreRecord: document.querySelector("#score-record"),
     scoreTimeline: document.querySelector("#score-timeline"),
+    scoreGraphs: document.querySelector("#score-graphs"),
     scoreReview: document.querySelector("#score-review"),
     campaignReward: document.querySelector("#campaign-reward"),
     scoreSpectate: document.querySelector("#score-spectate"),
     scoreRematch: document.querySelector("#score-rematch"),
     title: document.querySelector("#selection-title"),
     copy: document.querySelector("#selection-copy"),
+    buildHelper: document.querySelector("#build-helper"),
     worker: document.querySelector("#train-worker"),
     soldier: document.querySelector("#train-soldier"),
     heavy: document.querySelector("#train-heavy"),
@@ -77,7 +79,11 @@
     factionTech: document.querySelector("#upgrade-faction-tech"),
     unloadTower: document.querySelector("#unload-tower"),
     ability: document.querySelector("#cast-ability"),
-    commandTooltip: document.querySelector("#command-tooltip")
+    commandTooltip: document.querySelector("#command-tooltip"),
+    mobileIdle: document.querySelector("#mobile-select-idle"),
+    mobileMove: document.querySelector("#mobile-move"),
+    mobileAttack: document.querySelector("#mobile-attack"),
+    mobileBuild: document.querySelector("#mobile-build")
   };
   const commandGroups = Array.from(document.querySelectorAll("[data-command-group]"));
   const commandButtons = Array.from(document.querySelectorAll("[data-command-button]"));
@@ -138,6 +144,7 @@
   const tutorialLesson = tutorialMode ? Math.max(1, Math.min(2, Number(params.get("lesson") || roomSettings.tutorialLesson || 1))) : 1;
   const storyMode = params.get("story") === "1" || Boolean(roomSettings.story);
   const storyChapter = storyMode ? Math.max(1, Math.min(5, Number(params.get("chapter") || roomSettings.storyChapter || localStorage.getItem("magic-sheep-story-chapter") || 1))) : 1;
+  const storySlot = storyMode ? String(params.get("slot") || roomSettings.storySlot || localStorage.getItem("magic-sheep-story-active-slot") || "1") : "1";
   const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
   const aiDifficulty = String(roomSettings.difficulty || params.get("difficulty") || "normal").toLowerCase();
   ui.room.textContent = storyMode
@@ -319,7 +326,25 @@
     hard: { think: 12, drip: 1.12, burst: 32, gasDelay: 100, gas: 5, caps: [3, 5, 8], waveDelay: 140, waveCooldown: 52, waveSize: 6, heavyDelay: 155, heavyChance: 0.72, health: 1.16, damage: 1.12 },
     nightmare: { think: 9, drip: 1.4, burst: 38, gasDelay: 82, gas: 6, caps: [4, 7, 10], waveDelay: 118, waveCooldown: 43, waveSize: 8, heavyDelay: 132, heavyChance: 0.62, health: 1.3, damage: 1.25 }
   };
-  const aiProfile = aiProfiles[aiDifficulty] || aiProfiles.normal;
+  const aiStyle = String(roomSettings.aiStyle || "balanced");
+  const aiStyleProfiles = {
+    balanced: {},
+    rusher: { waveDelay: 0.72, waveCooldown: 0.78, waveSize: 0.82, heavyDelay: 1.18, think: 0.85 },
+    defender: { waveDelay: 1.22, waveCooldown: 1.15, waveSize: 1.25, burst: 1.18, think: 1.1 },
+    expander: { drip: 1.18, burst: 1.12, gasDelay: 0.88, think: 0.92 },
+    tech: { gasDelay: 0.68, gas: 1.35, heavyDelay: 0.7, heavyChance: 0.62, waveDelay: 1.05 }
+  };
+  function styledAiProfile(base, style) {
+    const profile = Object.assign({}, base);
+    const modifier = aiStyleProfiles[style] || aiStyleProfiles.balanced;
+    Object.keys(modifier).forEach((key) => {
+      profile[key] = typeof profile[key] === "number" ? profile[key] * modifier[key] : profile[key];
+    });
+    if (modifier.gas && profile.gas) profile.gas = Math.max(1, Math.round(profile.gas));
+    if (modifier.waveSize && profile.waveSize) profile.waveSize = Math.max(2, Math.round(profile.waveSize));
+    return profile;
+  }
+  const aiProfile = styledAiProfile(aiProfiles[aiDifficulty] || aiProfiles.normal, aiStyle);
   const mapProfiles = {
     "Rainbow Meadow": { tint: "#79c78d", clearings: [[470, 780, 360, 210, -0.1], [1180, 500, 390, 220, 0.05], [1940, 900, 390, 220, 0.16], [1200, 1260, 360, 200, -0.08]], riverY: 1180, player: [360, 780], enemy: [2020, 900], playerGas: [790, 950], enemyGas: [1660, 980] },
     "Candy Meadow": { tint: "#6db978", clearings: [[760, 880, 360, 210, -0.2], [1710, 850, 390, 230, 0.15]], riverY: 1160, player: [330, 820], enemy: [2050, 780], playerGas: [780, 1000], enemyGas: [1640, 990] },
@@ -355,6 +380,8 @@
       marshmallowsGathered: 0
     },
     timeline: [],
+    history: [],
+    nextHistorySample: 0,
     milestones: {
       firstBarracks: false,
       firstArmy: false,
@@ -1973,7 +2000,8 @@
   function tooltipText(config) {
     const label = (config.mode || "Build") + " " + commandName(config.type, state.player.faction);
     const timeText = config.time ? "\nTime: " + config.time + "s" : "";
-    return label + "\nCost: " + costLine(config.type) + timeText;
+    const counterText = stats[config.type] && stats[config.type].speed > 0 ? "\nRole: " + unitCounterText(config.type) : "";
+    return label + "\nCost: " + costLine(config.type) + timeText + counterText;
   }
 
   function structureLabel(type, faction) {
@@ -3419,6 +3447,7 @@
     updateHitFlashes(dt);
     fight(dt);
     cleanup();
+    sampleMatchHistory();
     updateStoryEvents();
     updateTutorial();
     updateUi();
@@ -3731,6 +3760,19 @@
     recordTimeline(title, detail);
   }
 
+  function sampleMatchHistory(force = false) {
+    if (!force && state.elapsed < state.nextHistorySample) return;
+    state.nextHistorySample = state.elapsed + 15;
+    state.history.push({
+      time: Math.floor(state.elapsed),
+      workers: state.units.filter((unit) => unit.owner === "player" && unit.type === "worker").length,
+      army: state.units.filter((unit) => unit.owner === "player" && unit.type !== "worker").length,
+      buildings: state.structures.filter((structure) => structure.owner === "player" && !structure.underConstruction).length,
+      marshmallows: Math.floor(state.stats.marshmallowsGathered)
+    });
+    if (state.history.length > 40) state.history.shift();
+  }
+
   function activeProfileName() {
     try {
       const profile = JSON.parse(localStorage.getItem("magic-sheep-current-profile") || "null");
@@ -3761,6 +3803,7 @@
     if (state.ended) return;
     state.ended = true;
     state.result = result;
+    sampleMatchHistory(true);
     recordTimeline(result === "victory" ? "Victory" : "Defeat", result === "victory" ? "Your team won the meadow." : "Your team was defeated.");
     if (isNetworkHost) publishNetworkSnapshot();
     showScoreScreen(result);
@@ -3778,6 +3821,7 @@
       chapter: storyMode ? storyChapter : null,
       faction: factionData[state.player.faction].name,
       timeline: state.timeline.slice(),
+      history: state.history.slice(),
       playedAt: new Date().toISOString()
     };
     try {
@@ -3789,6 +3833,7 @@
         if (!old || record.time < old.time || difficultyRank(aiDifficulty) > difficultyRank(old.difficulty)) records[storyChapter] = record;
         localStorage.setItem("magic-sheep-story-records", JSON.stringify(records));
         localStorage.setItem("magic-sheep-story-chapter", String(Math.min(5, storyChapter + 1)));
+        localStorage.setItem("magic-sheep-story-chapter-slot-" + storySlot, String(Math.min(5, storyChapter + 1)));
       }
     } catch (_error) {
       // The match still completes when browser storage is unavailable.
@@ -3849,6 +3894,35 @@
         body.append(title, detail);
         item.append(time, body);
         ui.scoreTimeline.append(item);
+      });
+    }
+    if (ui.scoreGraphs) {
+      ui.scoreGraphs.innerHTML = "";
+      const latest = (record.history && record.history.length ? record.history[record.history.length - 1] : null) || {
+        workers: Number(ui.scoreWorkers.textContent) || 0,
+        army: Number(ui.scoreArmy.textContent) || 0,
+        buildings: state.stats.structuresBuilt,
+        marshmallows: state.stats.marshmallowsGathered
+      };
+      [
+        ["Workers", latest.workers, 24],
+        ["Army", latest.army, 40],
+        ["Buildings", latest.buildings, 18],
+        ["Gathered", latest.marshmallows, 900]
+      ].forEach(([label, value, max]) => {
+        const row = document.createElement("div");
+        const name = document.createElement("span");
+        const bar = document.createElement("div");
+        const fill = document.createElement("span");
+        const number = document.createElement("strong");
+        row.className = "score-graph";
+        bar.className = "score-graph__bar";
+        name.textContent = label;
+        fill.style.width = Math.max(4, Math.min(100, (value / max) * 100)) + "%";
+        number.textContent = String(value);
+        bar.append(fill);
+        row.append(name, bar, number);
+        ui.scoreGraphs.append(row);
       });
     }
     ui.scoreSpectate.hidden = !(result === "defeat" && roomSettings.matchType === "ffa");
@@ -4770,6 +4844,13 @@
       mctx.arc(e.x * sx, e.y * sy, storyMode && e.storyTag === "littleTuft" && !story.rescuedTuft ? 5 : e.kind === "structure" ? 4 : 2.5, 0, Math.PI * 2);
       mctx.fill();
     });
+    state.effects.filter((effect) => effect.kind === "ping").forEach((effect) => {
+      mctx.strokeStyle = effect.color || "#fff47a";
+      mctx.lineWidth = 2;
+      mctx.beginPath();
+      mctx.arc(effect.x * sx, effect.y * sy, 6 + Math.sin(effect.life * 10) * 2, 0, Math.PI * 2);
+      mctx.stroke();
+    });
     mctx.strokeStyle = "#fff47a";
     mctx.lineWidth = 1;
     mctx.strokeRect(camera.x * sx, camera.y * sy, camera.w * sx, camera.h * sy);
@@ -4778,6 +4859,7 @@
   function updateUi() {
     updateFactionCommandNames();
     updateCommandTooltips();
+    updateBuildHelper();
     ui.lollipops.textContent = Math.floor(state.player.lollipops);
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
     ui.wool.textContent = state.player.woolUsed + " / " + state.player.woolMax;
@@ -4896,6 +4978,46 @@
     if (unitStats.attackAir) return "Attacks air only. ";
     if (unitStats.attackGround) return "Attacks ground only. ";
     return "Does not attack. ";
+  }
+
+  function unitCounterText(type) {
+    if (type === "worker") return "Economy unit. Weak in fights.";
+    if (type === "soldier") return "Good scout and anti-air. Weak against heavy armor.";
+    if (type === "heavy") return "Good against buildings and light units. Needs support vs flyers.";
+    if (type === "elite") return "Strong core fighter. Expensive, protect it with workers and support.";
+    if (type === "support") return "Keeps armies alive. Weak if caught alone.";
+    if (type === "flyer") return "Flies over buildings. Weak to anti-air soldiers and towers.";
+    if (type === "extraHeavy") return "Base breaker. Very slow and weak without escorts.";
+    return "";
+  }
+
+  function buildOrderSteps() {
+    const hasBarracks = state.structures.some((s) => s.owner === "player" && s.type === "production" && !s.underConstruction);
+    const hasExtractor = state.structures.some((s) => s.owner === "player" && s.type === "extractor" && !s.underConstruction);
+    const hasForge = state.structures.some((s) => s.owner === "player" && s.type === "forge" && !s.underConstruction);
+    const hasAdvanced = state.structures.some((s) => s.owner === "player" && (s.type === "hangar" || s.type === "heavyTech") && !s.underConstruction);
+    return [
+      { text: "Train workers and gather Marshmallows", done: state.units.filter((u) => u.owner === "player" && u.type === "worker").length >= 5 || state.stats.marshmallowsGathered >= 80 },
+      { text: "Build a Barracks", done: hasBarracks },
+      { text: "Train 3 army units", done: state.units.filter((u) => u.owner === "player" && u.type !== "worker").length >= 3 },
+      { text: "Build a Lolligas Extractor", done: hasExtractor },
+      { text: "Build a Forge and upgrade armor", done: hasForge && (upgrades.armor.researched || upgrades.armor.inProgress) },
+      { text: "Add Hangar or Heavy Facility", done: hasAdvanced }
+    ];
+  }
+
+  function updateBuildHelper() {
+    if (!ui.buildHelper) return;
+    const steps = buildOrderSteps();
+    const current = steps.findIndex((step) => !step.done);
+    ui.buildHelper.innerHTML = "";
+    steps.slice(0, Math.min(steps.length, current < 0 ? 4 : current + 2)).forEach((step, index) => {
+      const row = document.createElement("div");
+      row.className = "build-helper__step";
+      row.classList.toggle("is-current", index === current);
+      row.textContent = (step.done ? "Done: " : index === current ? "Next: " : "Soon: ") + step.text;
+      ui.buildHelper.append(row);
+    });
   }
 
   function activeUpgradeText() {
@@ -5260,6 +5382,39 @@
     commandMode = "ping";
     say("Map ping: click a location for your team.");
   });
+  if (ui.mobileIdle) {
+    ui.mobileIdle.addEventListener("click", () => {
+      startMatchMusic();
+      const idle = idleWorkerList()[0];
+      if (!idle) {
+        say("No idle workers.");
+        return;
+      }
+      selected.clear();
+      selected.add(idle.id);
+      camera.x = Math.max(0, Math.min(world.w - camera.w, idle.x - camera.w / 2));
+      camera.y = Math.max(0, Math.min(world.h - camera.h, idle.y - camera.h / 2));
+      say("Idle worker selected.");
+    });
+    ui.mobileMove.addEventListener("click", () => {
+      startMatchMusic();
+      beginMoveCommand();
+    });
+    ui.mobileAttack.addEventListener("click", () => {
+      startMatchMusic();
+      if (!selectedPlayerUnits().length) {
+        say("Select units first.");
+        return;
+      }
+      commandMode = "attack";
+      say("Attack move: tap a destination.");
+    });
+    ui.mobileBuild.addEventListener("click", () => {
+      startMatchMusic();
+      const worker = state.units.find((u) => selected.has(u.id) && u.owner === "player" && u.type === "worker");
+      say(worker ? "Build buttons are open at bottom right." : "Select a worker to build.");
+    });
+  }
   ui.heroAbility.addEventListener("click", () => {
     startMatchMusic();
     const ids = state.units.filter((unit) => selected.has(unit.id) && unit.heroName).map((unit) => unit.id);

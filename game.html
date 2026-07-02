@@ -64,6 +64,7 @@
           <div class="selection-panel">
             <h2 id="selection-title">No Selection</h2>
             <p id="selection-copy">Drag over sheep or click a unit to command the flock.</p>
+            <div class="build-helper" id="build-helper" aria-label="Build order helper"></div>
           </div>
 
           <div class="command-card">
@@ -106,6 +107,12 @@
             <button id="upgrade-faction-tech" data-command-button="forge" type="button">Faction<br>Upgrade</button>
           </div>
           <div class="command-tooltip" id="command-tooltip" hidden></div>
+          <div class="mobile-actions" id="mobile-actions" aria-label="Touch commands">
+            <button id="mobile-select-idle" type="button">Idle</button>
+            <button id="mobile-move" type="button">Move</button>
+            <button id="mobile-attack" type="button">Attack</button>
+            <button id="mobile-build" type="button">Build</button>
+          </div>
 
           <div class="art-preload" aria-hidden="true">
             <img src="./magic-sheep-units.png" alt="">
@@ -141,6 +148,7 @@
           <div><span id="score-army">0</span><small>Army Left</small></div>
         </div>
         <div class="score-timeline" id="score-timeline" aria-label="Replay timeline"></div>
+        <div class="score-graphs" id="score-graphs" aria-label="Post-game graphs"></div>
         <div class="score-actions">
           <a href="./index.html">Back to Lobby</a>
           <button id="score-review" type="button">Review Battlefield</button>

@@ -47,7 +47,7 @@ select {
   z-index: 20;
   top: 12px;
   display: grid;
-  grid-template-columns: minmax(180px, 230px) minmax(420px, 1fr) minmax(260px, 330px);
+  grid-template-columns: minmax(160px, 220px) minmax(390px, 1fr) minmax(240px, 320px);
   gap: 16px;
   align-items: center;
   margin-bottom: 18px;
@@ -399,7 +399,7 @@ body.has-room .lobby > [role="tabpanel"] {
 
 .mode-menu {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -469,7 +469,7 @@ body.has-room .lobby > [role="tabpanel"] {
 
 .profile-form {
   display: grid;
-  grid-template-columns: 1fr 0.72fr auto auto auto;
+  grid-template-columns: minmax(70px, 1fr) minmax(56px, 0.72fr) auto auto auto;
   gap: 6px;
 }
 
@@ -507,6 +507,16 @@ body.has-room .lobby > [role="tabpanel"] {
   color: #53685f;
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.map-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8f5e8;
+  color: #53685f;
+  font-size: 0.9rem;
+  font-weight: 850;
+  padding: 12px;
 }
 
 input,
@@ -756,6 +766,48 @@ button:focus-visible {
   font-size: 1.05rem;
 }
 
+.replay-list {
+  display: grid;
+  gap: 10px;
+}
+
+.replay-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf7;
+  padding: 14px;
+}
+
+.replay-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.replay-card__head strong {
+  font-size: 1.1rem;
+}
+
+.replay-card__meta,
+.replay-card__timeline {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.replay-card__timeline {
+  display: grid;
+  gap: 4px;
+}
+
+.replay-card__timeline span {
+  color: var(--ink);
+}
+
 .room {
   position: static;
   display: grid;
@@ -954,6 +1006,14 @@ button:focus-visible {
 
   .top-menu {
     position: static;
+  }
+
+  .profile-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-form button {
+    min-height: 38px;
   }
 
   .hero__content {
