@@ -984,6 +984,7 @@ button:focus-visible {
 .room .room-code,
 .room .room-actions,
 .room .room-meta,
+.room .lobby-chat,
 .room #add-ai,
 .room #start-game,
 .room #quit-lobby,
@@ -1246,8 +1247,10 @@ button:focus-visible {
   .room .room-code,
   .room .room-actions,
   .room .room-meta,
+  .room .lobby-chat,
   .room #add-ai,
   .room #start-game,
+  .room #quit-lobby,
   .room .status,
   .room .roster {
     grid-column: auto;

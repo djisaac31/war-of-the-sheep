@@ -445,10 +445,23 @@ button {
 }
 
 .game-chat {
+  position: fixed;
+  right: 14px;
+  bottom: 270px;
+  z-index: 20;
   display: grid;
-  grid-column: 3;
   gap: 6px;
+  width: min(360px, calc(100vw - 28px));
   min-height: 0;
+  border: 1px solid rgba(242, 191, 77, 0.5);
+  border-radius: 8px;
+  background: rgba(10, 22, 18, 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  padding: 10px;
+}
+
+.game-chat[hidden] {
+  display: none;
 }
 
 .game-chat__log {
@@ -502,7 +515,9 @@ button {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
+  align-items: start;
+  justify-items: center;
+  overflow: auto;
   background: rgba(3, 9, 7, 0.72);
   padding: 20px;
   z-index: 10;
@@ -570,6 +585,7 @@ button {
 
 .score-card {
   width: min(720px, 100%);
+  margin: auto 0;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 8px;
   background: linear-gradient(180deg, #fffaf0, #efe8d1);
@@ -905,15 +921,13 @@ button {
   }
 
   .game-chat {
-    grid-column: 2;
-    grid-row: 3;
-    align-self: end;
-    margin-top: auto;
-    pointer-events: auto;
+    right: 8px;
+    bottom: calc(43dvh + 8px);
+    width: min(340px, calc(100vw - 16px));
   }
 
   .game-chat__log {
-    display: none;
+    max-height: 110px;
   }
 
   .game-chat__form {

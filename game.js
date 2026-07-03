@@ -81,6 +81,8 @@
     unloadTower: document.querySelector("#unload-tower"),
     ability: document.querySelector("#cast-ability"),
     commandTooltip: document.querySelector("#command-tooltip"),
+    gameChat: document.querySelector("#game-chat"),
+    gameChatToggle: document.querySelector("#chat-toggle"),
     gameChatForm: document.querySelector("#game-chat-form"),
     gameChatInput: document.querySelector("#game-chat-input"),
     gameChatLog: document.querySelector("#game-chat-log"),
@@ -5748,6 +5750,15 @@
   });
   if (ui.gameChatForm) {
     renderGameChat(roomSettings.chat || []);
+    if (ui.gameChatToggle && ui.gameChat) {
+      ui.gameChatToggle.addEventListener("click", () => {
+        const willOpen = ui.gameChat.hidden;
+        ui.gameChat.hidden = !willOpen;
+        ui.gameChatToggle.textContent = willOpen ? "Hide Chat" : "Chat";
+        ui.gameChatToggle.setAttribute("aria-expanded", String(willOpen));
+        if (willOpen && ui.gameChatInput) ui.gameChatInput.focus();
+      });
+    }
     ui.gameChatForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const text = ui.gameChatInput ? ui.gameChatInput.value.trim() : "";

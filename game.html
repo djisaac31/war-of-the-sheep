@@ -21,6 +21,7 @@
         </div>
         <button class="music-button" id="idle-worker-button" type="button">Idle Worker</button>
         <button class="music-button" id="music-toggle" type="button" aria-pressed="false">Music Off</button>
+        <button class="music-button" id="chat-toggle" type="button" aria-expanded="false">Chat</button>
         <button class="music-button" id="mission-toggle" type="button" hidden>Hide Missions</button>
         <button class="music-button" id="alliance-toggle" type="button" hidden>Alliances</button>
         <div class="room-pill" id="room-pill">Room -----</div>
@@ -109,7 +110,7 @@
             <button id="upgrade-faction-tech" data-command-button="forge" type="button">Faction<br>Upgrade</button>
           </div>
           <div class="command-tooltip" id="command-tooltip" hidden></div>
-          <section class="game-chat" aria-label="Team chat">
+          <section class="game-chat" id="game-chat" aria-label="Team chat" hidden>
             <div id="game-chat-log" class="game-chat__log">
               <span>No messages yet.</span>
             </div>
