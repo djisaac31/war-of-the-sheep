@@ -467,10 +467,137 @@ body.has-room .lobby > [role="tabpanel"] {
   margin: 0;
 }
 
+.profile-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
+.profile-actions button,
+.ghost-button,
+.google-button {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #263e36;
+  color: #fffaf0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.profile-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ghost-button {
+  background: #fffdf7;
+  color: var(--ink);
+}
+
+.google-button {
+  background: #fff;
+  color: var(--ink);
+}
+
+.account-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 16% 20%, rgba(255, 224, 108, 0.28), transparent 28%),
+    linear-gradient(135deg, rgba(218, 244, 218, 0.97), rgba(255, 253, 247, 0.98));
+}
+
+.account-screen.is-hidden,
+.is-hidden {
+  display: none !important;
+}
+
+body.account-open {
+  overflow: hidden;
+}
+
+.account-panel {
+  position: relative;
+  display: grid;
+  width: min(620px, 100%);
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow: 0 24px 70px rgba(36, 51, 46, 0.18);
+  padding: clamp(20px, 4vw, 38px);
+}
+
+.account-back {
+  justify-self: start;
+}
+
+.account-panel h1 {
+  max-width: 11ch;
+  margin: 0;
+  font-size: clamp(2.1rem, 8vw, 4.8rem);
+  line-height: 0.9;
+}
+
+.account-copy {
+  max-width: 44rem;
+  margin: 0;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.account-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.account-tabs button {
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.account-tabs button.is-active {
+  background: #dff4e6;
+  color: var(--ink);
+}
+
 .profile-form {
   display: grid;
   grid-template-columns: minmax(70px, 1fr) minmax(56px, 0.72fr) auto auto auto;
   gap: 6px;
+}
+
+.account-form {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.account-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
 }
 
 .profile-form input,
@@ -491,6 +618,18 @@ body.has-room .lobby > [role="tabpanel"] {
   cursor: pointer;
   background: #263e36;
   color: #fffaf0;
+}
+
+.account-form input,
+.account-form button,
+.account-panel > button {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.account-status {
+  min-height: 1.2em;
+  font-size: 0.9rem;
 }
 
 .field {
@@ -802,10 +941,35 @@ button:focus-visible {
 .replay-card__timeline {
   display: grid;
   gap: 4px;
+  max-height: 2.8em;
+  overflow: hidden;
+}
+
+.replay-card__timeline.is-open {
+  max-height: none;
 }
 
 .replay-card__timeline span {
   color: var(--ink);
+}
+
+.replay-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.replay-card__actions button,
+.button--secondary {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf7;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 950;
+  padding: 0 14px;
+  cursor: pointer;
 }
 
 .room {
@@ -847,6 +1011,7 @@ button:focus-visible {
 
 .room-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   margin: 12px 0 18px;
@@ -915,6 +1080,59 @@ button:focus-visible {
   gap: 8px;
   min-height: 260px;
   margin-bottom: 16px;
+}
+
+.lobby-chat {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.lobby-chat__log {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 92px;
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid rgba(222, 215, 193, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.lobby-chat__log b {
+  color: var(--ink);
+}
+
+.lobby-chat__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.lobby-chat__form input,
+.lobby-chat__form button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 10px;
+  font-weight: 850;
+}
+
+.lobby-chat__form button {
+  cursor: pointer;
+  background: #263e36;
+  color: #fffaf0;
+}
+
+.lobby-chat__form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .player-row,

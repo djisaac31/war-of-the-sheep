@@ -53,6 +53,7 @@
     copy: document.querySelector("#selection-copy"),
     buildHelper: document.querySelector("#build-helper"),
     worker: document.querySelector("#train-worker"),
+    rally: document.querySelector("#set-rally"),
     soldier: document.querySelector("#train-soldier"),
     heavy: document.querySelector("#train-heavy"),
     elite: document.querySelector("#train-elite"),
@@ -80,6 +81,9 @@
     unloadTower: document.querySelector("#unload-tower"),
     ability: document.querySelector("#cast-ability"),
     commandTooltip: document.querySelector("#command-tooltip"),
+    gameChatForm: document.querySelector("#game-chat-form"),
+    gameChatInput: document.querySelector("#game-chat-input"),
+    gameChatLog: document.querySelector("#game-chat-log"),
     mobileIdle: document.querySelector("#mobile-select-idle"),
     mobileMove: document.querySelector("#mobile-move"),
     mobileAttack: document.querySelector("#mobile-attack"),
@@ -111,16 +115,21 @@
   let attackWaveTimer = 0;
   let messageTimer = 0;
   let spectating = false;
+  let musicEnabled = localStorage.getItem("war-of-the-sheep-music") !== "off";
 
   const params = new URLSearchParams(window.location.search);
   const roomCode = params.get("room") || "LOCAL";
+  const rawPlayerParam = params.get("player");
+  const isNetworkSpectator = params.get("net") === "1" && rawPlayerParam === "spectator";
   const network = {
     enabled: params.get("net") === "1",
-    playerIndex: Number(params.get("player") || 0),
+    playerIndex: isNetworkSpectator ? 0 : Number(rawPlayerParam || 0),
     lastCommandId: 0,
+    lastChatId: 0,
     lastSnapshotAt: 0,
     lastSnapshotPoll: 0,
     lastCommandPoll: 0,
+    lastChatPoll: 0,
     lastRoomPoll: 0,
     applyingSnapshot: false,
     tick: 0
@@ -133,8 +142,8 @@
   };
   const playerColors = ["#4ea2ff", "#ff705d", "#7cff9a", "#ffe066", "#c78bff", "#ffad4d"];
   const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];
-  const isNetworkHost = network.enabled && network.playerIndex === 0;
-  const isNetworkGuest = network.enabled && network.playerIndex > 0;
+  const isNetworkHost = network.enabled && network.playerIndex === 0 && !isNetworkSpectator;
+  const isNetworkGuest = network.enabled && network.playerIndex > 0 && !isNetworkSpectator;
   if (params.get("start") !== "1") {
     window.location.replace("./index.html" + (roomCode !== "LOCAL" ? "?room=" + encodeURIComponent(roomCode) : ""));
     return;
@@ -152,7 +161,12 @@
     : tutorialMode
     ? "Tutorial " + tutorialLesson
     : roomSettings.training ? "Training " + aiDifficulty.toUpperCase() + " - " + (roomSettings.map || "Candy Meadow")
+    : isNetworkSpectator ? "Observing Room " + roomCode
     : network.enabled ? "Online Room " + roomCode + " - P" + (network.playerIndex + 1) : "Room " + roomCode;
+  if (!musicEnabled) {
+    ui.musicToggle.textContent = "Music Off";
+    ui.musicToggle.setAttribute("aria-pressed", "false");
+  }
 
   const factionData = {
     rainbow: {
@@ -784,6 +798,84 @@
     }
   }
 
+  function canIssueOrders() {
+    if (!isNetworkSpectator) return true;
+    say("Observer mode is view-only.");
+    return false;
+  }
+
+  function appendGameChat(message) {
+    if (!ui.gameChatLog || !message) return;
+    const empty = ui.gameChatLog.querySelector(".game-chat__empty");
+    if (empty) empty.remove();
+    const line = document.createElement("span");
+    const name = document.createElement("b");
+    name.textContent = (message.name || "Shepherd") + ": ";
+    line.append(name, document.createTextNode(message.text || ""));
+    ui.gameChatLog.append(line);
+    while (ui.gameChatLog.children.length > 18) ui.gameChatLog.firstElementChild.remove();
+    ui.gameChatLog.scrollTop = ui.gameChatLog.scrollHeight;
+  }
+
+  async function sendGameChat(text) {
+    if (!network.enabled) {
+      appendGameChat({ name: "You", text });
+      return;
+    }
+    const session = readSession();
+    if (!session || !session.playerId) {
+      say("Join as a player to chat in this room.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/rooms/" + encodeURIComponent(roomCode) + "/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: session.playerId, text })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Chat failed.");
+      if (data.room) {
+        roomSettings = data.room;
+        renderGameChat(data.room.chat || []);
+      }
+    } catch (error) {
+      say(error.message);
+    }
+  }
+
+  function renderGameChat(messages) {
+    if (!ui.gameChatLog) return;
+    ui.gameChatLog.innerHTML = "";
+    const visible = (messages || []).slice(-18);
+    if (!visible.length) {
+      const empty = document.createElement("span");
+      empty.className = "game-chat__empty";
+      empty.textContent = network.enabled ? "No messages yet." : "Local training chat.";
+      ui.gameChatLog.append(empty);
+      return;
+    }
+    visible.forEach(appendGameChat);
+  }
+
+  async function pollGameChat() {
+    if (!network.enabled) return;
+    try {
+      const response = await fetch("/api/rooms/" + encodeURIComponent(roomCode));
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!data.room) return;
+      roomSettings = data.room;
+      const latest = (data.room.chat || []).reduce((max, message) => Math.max(max, Number(message.id || 0)), network.lastChatId);
+      if (latest > network.lastChatId) {
+        renderGameChat(data.room.chat || []);
+        network.lastChatId = latest;
+      }
+    } catch (_error) {
+      // Chat is helpful, but the match should keep running if polling hiccups.
+    }
+  }
+
   function allianceRequestBetween(fromIndex, toIndex) {
     return (roomSettings.allianceRequests || []).some((request) => request.fromIndex === fromIndex && request.toIndex === toIndex);
   }
@@ -907,7 +999,7 @@
   }
 
   async function pollNetworkSnapshot() {
-    if (!isNetworkGuest) return;
+    if (!isNetworkGuest && !isNetworkSpectator) return;
     try {
       const response = await fetch("/api/rooms/" + encodeURIComponent(roomCode) + "/snapshot");
       if (!response.ok) return;
@@ -972,7 +1064,7 @@
   }
 
   function shouldSwapPerspective() {
-    return network.enabled && !roomPlayersAllied(0, network.playerIndex);
+    return network.enabled && !isNetworkSpectator && !roomPlayersAllied(0, network.playerIndex);
   }
 
   function addUnit(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
@@ -2126,6 +2218,7 @@
     ].forEach(([key, button]) => setButtonTooltip(button, tooltipText(commandTooltipTypes[key])));
     setButtonTooltip(ui.stop, commandHelpText.stop);
     setButtonTooltip(ui.move, commandHelpText.move);
+    setButtonTooltip(ui.rally, "Set Rally: choose where new workers, army units, heavy units, or flyers walk after training.");
     setButtonTooltip(ui.hold, commandHelpText.hold);
     setButtonTooltip(ui.patrol, commandHelpText.patrol);
     setButtonTooltip(ui.formation, "Formation (F): cycle Box, Line, and Spread movement.");
@@ -2141,6 +2234,7 @@
   }
 
   function queueTraining(type, owner = "player") {
+    if (owner === "player" && !canIssueOrders()) return;
     const producerType = type === "worker" ? "base" : type === "extraHeavy" ? "heavyTech" : type === "flyer" ? "hangar" : "production";
     const producer = readyStructure(producerType, owner);
     if (!producer) {
@@ -2237,6 +2331,7 @@
   }
 
   function beginStructurePlacement(type) {
+    if (!canIssueOrders()) return;
     const worker = state.units.find((u) => selected.has(u.id) && u.owner === "player" && u.type === "worker");
     if (!worker) {
       say("Select a worker first, then choose a building.");
@@ -2343,6 +2438,10 @@
 
   function finishPlacement() {
     if (!placement) return false;
+    if (!canIssueOrders()) {
+      placement = null;
+      return true;
+    }
     const worker = state.units.find((u) => u.id === placement.workerId);
     if (!worker) {
       placement = null;
@@ -2542,6 +2641,7 @@
   }
 
   function startUpgrade(type) {
+    if (!canIssueOrders()) return;
     const upgrade = upgrades[type];
     if (!readyStructure("forge")) {
       say("Build a Forge before researching armor.");
@@ -2630,6 +2730,7 @@
   }
 
   function castAbility(owner = "player") {
+    if (owner === "player" && !canIssueOrders()) return;
     const side = sideFor(owner);
     const faction = side.faction;
     if (side.marshmallows < 25) {
@@ -2694,6 +2795,7 @@
   }
 
   function castHeroAbility(owner = "player", heroIds = []) {
+    if (owner === "player" && !canIssueOrders()) return;
     const heroes = state.units.filter((unit) => unit.owner === owner && unit.heroName && (!heroIds.length || heroIds.includes(unit.id)));
     const hero = heroes[0];
     if (!hero) {
@@ -2816,7 +2918,7 @@
   function updateEffects() {
     state.effects = state.effects.filter((effect) => {
       effect.life -= effect.kind === "bullet" ? 0.12 : 1 / 60;
-      if (effect.kind !== "bullet") effect.r += 2.2;
+      if (effect.kind !== "bullet" && typeof effect.r === "number") effect.r += 2.2;
       return effect.life > 0;
     });
   }
@@ -2887,7 +2989,8 @@
     return null;
   }
 
-  function issueCommand(wx, wy) {
+  function issueCommand(wx, wy, options = {}) {
+    if (!canIssueOrders()) return;
     const units = state.units.filter((u) => selected.has(u.id) && !u.garrisonedIn);
     if (!units.length) {
       const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech" || s.type === "hangar"));
@@ -2932,8 +3035,22 @@
       say("Move order issued.");
       return;
     }
+    if (options.queue) {
+      queueUnitOrder(units, { action: "command", x: wx, y: wy });
+      state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
+      say("Move order queued.");
+      return;
+    }
     applyUnitCommand("player", units.map((u) => u.id), wx, wy);
     state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
+  }
+
+  function queueUnitOrder(units, order) {
+    units.forEach((unit) => {
+      unit.orderQueue = unit.orderQueue || [];
+      unit.orderQueue.push(order);
+      if (unit.orderQueue.length > 5) unit.orderQueue.shift();
+    });
   }
 
   function applyUnitCommand(owner, unitIds, wx, wy, sourcePlayerIndex = null) {
@@ -2998,7 +3115,8 @@
     });
   }
 
-  function issueAttackMove(wx, wy) {
+  function issueAttackMove(wx, wy, options = {}) {
+    if (!canIssueOrders()) return;
     const units = state.units.filter((u) => selected.has(u.id) && u.kind !== "structure");
     if (!units.length) {
       say("Select units before using attack move.");
@@ -3010,6 +3128,13 @@
       commandMode = null;
       recordMilestone("firstAttackMove", "Attack-move issued", units.length + " unit" + (units.length === 1 ? "" : "s") + " pushed across the map.");
       say("Attack move issued.");
+      return;
+    }
+    if (options.queue && !isNetworkGuest) {
+      queueUnitOrder(units, { action: "attackMove", x: wx, y: wy });
+      state.effects.push({ x: wx, y: wy, r: 8, life: 1.1, color: "#ffef7a", kind: "attack" });
+      commandMode = null;
+      say("Attack move queued.");
       return;
     }
     applyAttackMove("player", units.map((u) => u.id), wx, wy);
@@ -3025,6 +3150,7 @@
   }
 
   function issueStop() {
+    if (!canIssueOrders()) return;
     const ids = selectedUnitIds();
     if (!ids.length) return say("Select units first.");
     if (isNetworkGuest) sendNetworkCommand({ action: "stop", unitIds: ids });
@@ -3033,6 +3159,7 @@
   }
 
   function issueHold() {
+    if (!canIssueOrders()) return;
     const ids = selectedUnitIds();
     if (!ids.length) return say("Select units first.");
     if (isNetworkGuest) sendNetworkCommand({ action: "hold", unitIds: ids });
@@ -3041,6 +3168,7 @@
   }
 
   function issuePatrol(wx, wy) {
+    if (!canIssueOrders()) return;
     const ids = selectedUnitIds();
     if (!ids.length) {
       say("Select units before using patrol.");
@@ -3051,6 +3179,28 @@
     state.effects.push({ x: wx, y: wy, r: 8, life: 1, color: "#83e79a", kind: "move" });
     commandMode = null;
     say("Patrol route set.");
+  }
+
+  function beginRallyCommand() {
+    if (!canIssueOrders()) return;
+    const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech" || s.type === "hangar"));
+    if (!structures.length) {
+      say("Select a base, Barracks, Heavy Facility, or Hangar first.");
+      return;
+    }
+    commandMode = "rally";
+    say("Set Rally: click where new units should gather.");
+  }
+
+  function issueRally(wx, wy) {
+    if (!canIssueOrders()) return;
+    const structures = state.structures.filter((s) => selected.has(s.id) && s.owner === "player" && (s.type === "production" || s.type === "base" || s.type === "heavyTech" || s.type === "hangar"));
+    if (!structures.length) return beginRallyCommand();
+    if (isNetworkGuest) sendNetworkCommand({ action: "rally", structureIds: structures.map((s) => s.id), x: wx, y: wy });
+    else applyRally("player", structures.map((s) => s.id), wx, wy);
+    state.effects.push({ x: wx, y: wy, r: 7, life: 0.9, color: "#f2bf4d", kind: "move" });
+    commandMode = null;
+    say("Rally point set.");
   }
 
   function applyStop(owner, unitIds) {
@@ -3237,6 +3387,20 @@
     });
   }
 
+  function unitReadyForQueuedOrder(unit) {
+    if (!unit.orderQueue || !unit.orderQueue.length || unit.garrisonedIn || unit.buildTask || unit.repairTarget || unit.harvest || unit.target || unit.garrisonTarget) return false;
+    if (unit.attackMove) return false;
+    return Math.hypot((unit.tx || unit.x) - unit.x, (unit.ty || unit.y) - unit.y) < 8;
+  }
+
+  function runNextQueuedOrder(unit) {
+    if (!unitReadyForQueuedOrder(unit)) return;
+    const order = unit.orderQueue.shift();
+    if (!order) return;
+    if (order.action === "attackMove") applyAttackMove(unit.owner, [unit.id], order.x, order.y, unit.playerIndex);
+    else applyUnitCommand(unit.owner, [unit.id], order.x, order.y, unit.playerIndex);
+  }
+
   function formationOffset(index, total) {
     if (formationMode === "line") {
       return { x: (index - (total - 1) / 2) * 44, y: 0 };
@@ -3402,7 +3566,14 @@
         refreshOnlineRoom();
       }
     }
-    if (isNetworkGuest) {
+    if (network.enabled) {
+      network.lastChatPoll += dt;
+      if (network.lastChatPoll > 1.5) {
+        network.lastChatPoll = 0;
+        pollGameChat();
+      }
+    }
+    if (isNetworkGuest || isNetworkSpectator) {
       network.lastSnapshotPoll += dt;
       if (network.lastSnapshotPoll > networkRates.guestSnapshot) {
         network.lastSnapshotPoll = 0;
@@ -3609,6 +3780,7 @@
         unit.attackY = null;
       }
     }
+    runNextQueuedOrder(unit);
   }
 
   function fight(dt) {
@@ -3619,8 +3791,7 @@
       const target = nearestAttackTarget(structure, structure.x, structure.y, s.range);
       if (!target || structure.cooldown > 0) return;
       structure.cooldown = s.cooldown;
-      target.hp -= damageAfterArmor(s.damage, target);
-      target.hitFlash = 0.18;
+      applyDamage(target, s.damage, factionData[structure.faction].accent);
       fireBullet(structure, target, factionData[structure.faction].accent);
       state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.2, r: 5, life: 0.25, color: "#fff7c4", kind: "spark" });
     });
@@ -3654,8 +3825,7 @@
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
         const antiAirBonus = unit.type === "soldier" && stats[target.type].airborne ? 7 : 0;
-        target.hp -= damageAfterArmor(unitDamage + antiAirBonus, target);
-        target.hitFlash = 0.18;
+        applyDamage(target, unitDamage + antiAirBonus, factionData[unit.faction].accent);
         if (s.splash) applySplashDamage(unit, target, unitDamage * 0.45, s.splash);
         if (unitRange > 55) fireBullet(unit, target, factionData[unit.faction].accent);
         else burst(target.x, target.y, factionData[unit.faction].accent);
@@ -3672,8 +3842,7 @@
       if (entity.id === target.id || entity.untargetable || !isHostileTo(unit.owner, entity, unit.playerIndex) || !canAttackTarget(unit, entity)) return;
       const distance = Math.hypot(entity.x - target.x, entity.y - target.y);
       if (distance > radius + stats[entity.type].radius) return;
-      entity.hp -= damageAfterArmor(damage, entity);
-      entity.hitFlash = 0.14;
+      applyDamage(entity, damage, factionData[unit.faction].accent, false);
     });
     state.effects.push({ x: target.x, y: target.y, r: radius * 0.22, life: 0.35, color: factionData[unit.faction].accent });
   }
@@ -3684,6 +3853,23 @@
     if ((target.type === "elite" || target.type === "extraHeavy") && upgrades.eliteArmor.researched) return Math.max(1, damage - 5);
     if ((target.type === "soldier" || target.type === "heavy") && upgrades.armor.researched) return Math.max(1, damage - 3);
     return damage;
+  }
+
+  function applyDamage(target, amount, color = "#fff7be", showNumber = true) {
+    const dealt = Math.max(0, Math.round(damageAfterArmor(amount, target)));
+    target.hp -= dealt;
+    target.hitFlash = Math.max(target.hitFlash || 0, 0.16);
+    if (showNumber && dealt > 0) {
+      state.effects.push({
+        kind: "damageText",
+        x: target.x + (Math.random() - 0.5) * 18,
+        y: target.y - stats[target.type].radius - 8,
+        value: dealt,
+        life: 1,
+        color
+      });
+    }
+    return dealt;
   }
 
   function cleanup() {
@@ -3782,21 +3968,43 @@
     }
   }
 
+  function activeProfile() {
+    try {
+      return JSON.parse(localStorage.getItem("magic-sheep-current-profile") || "null");
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function syncCloudProfile(name, password, statsRecord, replays) {
+    if (!name || !password || !navigator.onLine) return;
+    fetch("/api/accounts/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, password, stats: statsRecord || {}, replays: replays || [] })
+    }).catch(() => {
+      // Cloud sync is optional; local match records are already saved.
+    });
+  }
+
   function saveReplayRecord(record) {
-    const name = activeProfileName();
+    const profile = activeProfile();
+    const name = profile && profile.name ? String(profile.name) : "";
     const key = name ? "magic-sheep-replays-" + name.toLowerCase() : "magic-sheep-replays-guest";
     const profileKey = name ? "magic-sheep-profile-stats-" + name.toLowerCase() : "";
     const replays = JSON.parse(localStorage.getItem(key) || "[]");
     replays.unshift(record);
     localStorage.setItem(key, JSON.stringify(replays.slice(0, 20)));
+    let statsRecord = null;
     if (profileKey) {
-      const statsRecord = JSON.parse(localStorage.getItem(profileKey) || "{}");
+      statsRecord = JSON.parse(localStorage.getItem(profileKey) || "{}");
       statsRecord.matches = (statsRecord.matches || 0) + 1;
       statsRecord.wins = (statsRecord.wins || 0) + (record.result === "victory" ? 1 : 0);
       statsRecord.enemiesDestroyed = (statsRecord.enemiesDestroyed || 0) + record.enemiesDestroyed;
       statsRecord.bestTime = !statsRecord.bestTime || record.time < statsRecord.bestTime ? record.time : statsRecord.bestTime;
       localStorage.setItem(profileKey, JSON.stringify(statsRecord));
     }
+    if (profile && profile.cloud) syncCloudProfile(name, profile.password, statsRecord, replays.slice(0, 20));
   }
 
   function endMatch(result) {
@@ -4005,7 +4213,7 @@
   }
 
   async function startMatchMusic() {
-    if (!ui.music.paused || state.ended) return;
+    if (!musicEnabled || !ui.music.paused || state.ended) return;
     ui.music.volume = 0.45;
     try {
       await ui.music.play();
@@ -4627,6 +4835,20 @@
   }
 
   function drawEffect(e) {
+    if (e.kind === "damageText") {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, e.life);
+      ctx.font = "900 18px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(7, 28, 21, 0.75)";
+      ctx.fillStyle = e.color || "#fff7be";
+      const y = e.y - (1 - e.life) * 28;
+      ctx.strokeText(String(e.value), e.x, y);
+      ctx.fillText(String(e.value), e.x, y);
+      ctx.restore();
+      return;
+    }
     if (e.kind === "bullet") {
       const progress = 1 - Math.max(0, Math.min(1, e.life));
       const x = e.x + (e.tx - e.x) * progress;
@@ -4900,20 +5122,20 @@
       ui.hangar.disabled = !hasBarracks;
       if (first.heroName) ui.heroAbility.disabled = first.heroAbilityCooldown > 0;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "base") {
-      showCommandGroups(["base"]);
+      showCommandGroups(["base", "rally"]);
       ui.worker.disabled = false;
       ui.ability.disabled = false;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "production") {
-      showCommandGroups(["barracks"]);
+      showCommandGroups(["barracks", "rally"]);
       ui.soldier.disabled = false;
       ui.heavy.disabled = false;
       ui.elite.disabled = !hasForge;
       ui.support.disabled = !hasForge;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "heavyTech") {
-      showCommandGroups(["heavy-tech"]);
+      showCommandGroups(["heavy-tech", "rally"]);
       ui.extraHeavy.disabled = false;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "hangar") {
-      showCommandGroups(["hangar"]);
+      showCommandGroups(["hangar", "rally"]);
       ui.flyer.disabled = false;
     } else if (!first.underConstruction && first.kind === "structure" && first.type === "defenseTower") {
       showCommandGroups(["tower"]);
@@ -5008,6 +5230,10 @@
 
   function updateBuildHelper() {
     if (!ui.buildHelper) return;
+    if (!tutorialMode && !storyMode) {
+      ui.buildHelper.innerHTML = "";
+      return;
+    }
     const steps = buildOrderSteps();
     const current = steps.findIndex((step) => !step.done);
     ui.buildHelper.innerHTML = "";
@@ -5058,19 +5284,23 @@
         say("Command cancelled.");
         return;
       }
-      issueCommand(p.wx, p.wy);
+      issueCommand(p.wx, p.wy, { queue: event.shiftKey });
       return;
     }
     if (event.button === 0 && commandMode === "move") {
-      issueCommand(p.wx, p.wy);
+      issueCommand(p.wx, p.wy, { queue: event.shiftKey });
       return;
     }
     if (event.button === 0 && commandMode === "attack") {
-      issueAttackMove(p.wx, p.wy);
+      issueAttackMove(p.wx, p.wy, { queue: event.shiftKey });
       return;
     }
     if (event.button === 0 && commandMode === "patrol") {
       issuePatrol(p.wx, p.wy);
+      return;
+    }
+    if (event.button === 0 && commandMode === "rally") {
+      issueRally(p.wx, p.wy);
       return;
     }
     if (event.button === 0 && commandMode === "ping") {
@@ -5142,6 +5372,7 @@
   }
 
   function beginMoveCommand() {
+    if (!canIssueOrders()) return;
     const units = selectedPlayerUnits();
     if (!units.length) {
       say("Select units first, then tap Move.");
@@ -5243,6 +5474,13 @@
   });
 
   window.addEventListener("keydown", (event) => {
+    const tagName = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
+    if (tagName === "input" || tagName === "textarea" || event.target?.isContentEditable) return;
+    if (isNetworkSpectator) {
+      if (/^[1-9]$/.test(event.key)) return;
+      say("Observer mode is view-only.");
+      return;
+    }
     if ((event.key === "a" || event.key === "A") && !event.ctrlKey && !event.metaKey) {
       const units = state.units.filter((u) => selected.has(u.id));
       if (!units.length) {
@@ -5318,36 +5556,43 @@
 
   ui.worker.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "worker" });
     else queueTraining("worker");
   });
   ui.soldier.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "soldier" });
     else queueTraining("soldier");
   });
   ui.heavy.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "heavy" });
     else queueTraining("heavy");
   });
   ui.elite.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "elite" });
     else queueTraining("elite");
   });
   ui.support.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "support" });
     else queueTraining("support");
   });
   ui.flyer.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "flyer" });
     else queueTraining("flyer");
   });
   ui.extraHeavy.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "extraHeavy" });
     else queueTraining("extraHeavy");
   });
@@ -5365,6 +5610,7 @@
   });
   ui.patrol.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     const units = state.units.filter((u) => selected.has(u.id));
     if (!units.length) {
       say("Select units first.");
@@ -5375,10 +5621,12 @@
   });
   ui.formation.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     cycleFormation();
   });
   ui.ping.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     commandMode = "ping";
     say("Map ping: click a location for your team.");
   });
@@ -5402,6 +5650,7 @@
     });
     ui.mobileAttack.addEventListener("click", () => {
       startMatchMusic();
+      if (!canIssueOrders()) return;
       if (!selectedPlayerUnits().length) {
         say("Select units first.");
         return;
@@ -5409,14 +5658,20 @@
       commandMode = "attack";
       say("Attack move: tap a destination.");
     });
-    ui.mobileBuild.addEventListener("click", () => {
+  ui.mobileBuild.addEventListener("click", () => {
       startMatchMusic();
+      if (!canIssueOrders()) return;
       const worker = state.units.find((u) => selected.has(u.id) && u.owner === "player" && u.type === "worker");
       say(worker ? "Build buttons are open at bottom right." : "Select a worker to build.");
     });
   }
+  ui.rally.addEventListener("click", () => {
+    startMatchMusic();
+    beginRallyCommand();
+  });
   ui.heroAbility.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     const ids = state.units.filter((unit) => selected.has(unit.id) && unit.heroName).map((unit) => unit.id);
     if (isNetworkGuest) sendNetworkCommand({ action: "heroAbility", unitIds: ids });
     else castHeroAbility("player", ids);
@@ -5467,6 +5722,7 @@
   });
   ui.unloadTower.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     const tower = state.structures.find((structure) => selected.has(structure.id) && structure.owner === "player" && structure.type === "defenseTower");
     if (!tower) return say("Select a defence tower first.");
     if (isNetworkGuest) sendNetworkCommand({ action: "unloadTower", towerId: tower.id });
@@ -5474,6 +5730,7 @@
   });
   ui.ability.addEventListener("click", () => {
     startMatchMusic();
+    if (!canIssueOrders()) return;
     if (isNetworkGuest) sendNetworkCommand({ action: "ability" });
     else castAbility();
   });
@@ -5489,10 +5746,24 @@
     camera.y = Math.max(0, Math.min(world.h - camera.h, idle.y - camera.h / 2));
     say("Idle worker selected.");
   });
+  if (ui.gameChatForm) {
+    renderGameChat(roomSettings.chat || []);
+    ui.gameChatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = ui.gameChatInput ? ui.gameChatInput.value.trim() : "";
+      if (!text) return;
+      if (ui.gameChatInput) ui.gameChatInput.value = "";
+      sendGameChat(text);
+    });
+  }
   ui.musicToggle.addEventListener("click", async () => {
     if (ui.music.paused) {
+      musicEnabled = true;
+      localStorage.setItem("war-of-the-sheep-music", "on");
       await startMatchMusic();
     } else {
+      musicEnabled = false;
+      localStorage.setItem("war-of-the-sheep-music", "off");
       ui.music.pause();
       ui.musicToggle.textContent = "Music Off";
       ui.musicToggle.setAttribute("aria-pressed", "false");

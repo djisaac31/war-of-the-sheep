@@ -15,9 +15,14 @@
   const status = document.querySelector("#status");
   const copyCode = document.querySelector("#copy-code");
   const copyLink = document.querySelector("#copy-link");
+  const reconnectRoom = document.querySelector("#reconnect-room");
+  const observeRoom = document.querySelector("#observe-room");
   const addAi = document.querySelector("#add-ai");
   const startGame = document.querySelector("#start-game");
   const quitLobby = document.querySelector("#quit-lobby");
+  const lobbyChatForm = document.querySelector("#lobby-chat-form");
+  const lobbyChatInput = document.querySelector("#lobby-chat-input");
+  const lobbyChatLog = document.querySelector("#lobby-chat-log");
   const roomCodeInput = document.querySelector("#room-code-input");
   const mapName = document.querySelector("#map-name");
   const mapPreview = document.querySelector("#map-preview");
@@ -32,20 +37,33 @@
   const storyDifficulty = document.querySelector("#story-difficulty");
   const storySaveSlot = document.querySelector("#story-save-slot");
   const replayList = document.querySelector("#replay-list");
+  const quickMatch = document.querySelector("#quick-match");
+  const accountScreen = document.querySelector("#account-screen");
+  const openAccount = document.querySelector("#open-account");
+  const accountBack = document.querySelector("#account-back");
+  const guestLogin = document.querySelector("#guest-login");
+  const googleLogin = document.querySelector("#google-login");
+  const accountTabs = Array.from(document.querySelectorAll("[data-account-mode]"));
   const profileForm = document.querySelector("#profile-form");
   const profileUsername = document.querySelector("#profile-username");
-  const profilePin = document.querySelector("#profile-pin");
+  const profilePassword = document.querySelector("#profile-password");
   const profileName = document.querySelector("#profile-name");
   const profileSummary = document.querySelector("#profile-summary");
   const profileStatus = document.querySelector("#profile-status");
+  const profileCardStatus = document.querySelector("#profile-card-status");
   const profileCreate = document.querySelector("#profile-create");
+  const profileLogin = document.querySelector("#profile-login");
   const profileLogout = document.querySelector("#profile-logout");
 
   let activeRoom = null;
   let serverOnline = false;
+  let serverAccounts = false;
+  let googleOAuthReady = false;
   let lobbyPoll = null;
+  let accountMode = "login";
   const ACCOUNTS_KEY = "magic-sheep-accounts";
   const CURRENT_PROFILE_KEY = "magic-sheep-current-profile";
+  const PREFERENCES_KEY = "war-of-the-sheep-lobby-preferences";
   const mapCatalog = [
     { name: "Candy Meadow", players: 2 },
     { name: "Marshmallow Crossing", players: 2 },
@@ -95,6 +113,62 @@
     }
   }
 
+  function readPreferences() {
+    try {
+      return JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}");
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function writePreferences(prefs) {
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs || {}));
+  }
+
+  function setRadioValue(form, name, value) {
+    const input = form && form.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (input) input.checked = true;
+  }
+
+  function rememberPreferences(extra) {
+    const prefs = Object.assign(readPreferences(), extra || {});
+    const hostName = document.querySelector("#host-name");
+    const joinName = document.querySelector("#join-name");
+    const trainName = document.querySelector("#train-name");
+    prefs.hostName = hostName && hostName.value ? hostName.value : prefs.hostName;
+    prefs.joinName = joinName && joinName.value ? joinName.value : prefs.joinName;
+    prefs.trainName = trainName && trainName.value ? trainName.value : prefs.trainName;
+    prefs.hostFaction = getSelectedValue(hostForm, "hostFaction") || prefs.hostFaction;
+    prefs.joinFaction = getSelectedValue(joinForm, "joinFaction") || prefs.joinFaction;
+    prefs.trainFaction = getSelectedValue(trainForm, "trainFaction") || prefs.trainFaction;
+    prefs.matchType = matchType ? matchType.value : prefs.matchType;
+    prefs.playerCount = playerCount ? playerCount.value : prefs.playerCount;
+    prefs.mapName = mapName ? mapName.value : prefs.mapName;
+    prefs.trainingMap = trainingMap ? trainingMap.value : prefs.trainingMap;
+    writePreferences(prefs);
+  }
+
+  function applyPreferences() {
+    const prefs = readPreferences();
+    const profile = currentProfile();
+    const name = profile && profile.name ? profile.name : "";
+    const hostName = document.querySelector("#host-name");
+    const joinName = document.querySelector("#join-name");
+    const trainName = document.querySelector("#train-name");
+    if (hostName) hostName.value = prefs.hostName || name || hostName.value;
+    if (joinName) joinName.value = prefs.joinName || name || joinName.value;
+    if (trainName) trainName.value = prefs.trainName || name || trainName.value;
+    if (prefs.hostFaction) setRadioValue(hostForm, "hostFaction", prefs.hostFaction);
+    if (prefs.joinFaction) setRadioValue(joinForm, "joinFaction", prefs.joinFaction);
+    if (prefs.trainFaction) setRadioValue(trainForm, "trainFaction", prefs.trainFaction);
+    if (prefs.matchType && matchType) matchType.value = prefs.matchType;
+    if (prefs.playerCount && playerCount) playerCount.value = prefs.playerCount;
+    const hostDifficulty = document.querySelector("#host-ai-difficulty");
+    const hostStyle = document.querySelector("#host-ai-style");
+    if (hostDifficulty && prefs.hostAiDifficulty) hostDifficulty.value = prefs.hostAiDifficulty;
+    if (hostStyle && prefs.hostAiStyle) hostStyle.value = prefs.hostAiStyle;
+  }
+
   function profileKey(name) {
     return String(name || "").trim().toLowerCase();
   }
@@ -112,14 +186,45 @@
       profileName.textContent = "Guest";
       profileSummary.textContent = "Replays save locally.";
       profileLogout.disabled = true;
+      openAccount.textContent = "Log In / Create Account";
       return;
     }
     const statsRecord = JSON.parse(localStorage.getItem("magic-sheep-profile-stats-" + profileKey(profile.name)) || "{}");
     profileName.textContent = profile.name;
     profileSummary.textContent = (statsRecord.matches || 0) + " matches, " + (statsRecord.wins || 0) + " wins.";
     profileLogout.disabled = false;
+    openAccount.textContent = "Switch Account";
     fillCommanderNames(profile.name);
     renderReplays();
+  }
+
+  function setAccountMode(mode) {
+    accountMode = mode === "create" ? "create" : "login";
+    accountTabs.forEach(function (button) {
+      const active = button.dataset.accountMode === accountMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    profileLogin.classList.toggle("is-hidden", accountMode !== "login");
+    profileCreate.classList.toggle("is-hidden", accountMode !== "create");
+    profilePassword.autocomplete = accountMode === "create" ? "new-password" : "current-password";
+    profileStatus.textContent = accountMode === "create" ? "Create a password with at least 4 characters." : "";
+  }
+
+  function openAccountScreen(mode) {
+    setAccountMode(mode || "login");
+    accountScreen.classList.remove("is-hidden");
+    document.body.classList.add("account-open");
+    profileUsername.focus();
+  }
+
+  function closeAccountScreen(message) {
+    accountScreen.classList.add("is-hidden");
+    document.body.classList.remove("account-open");
+    if (message) {
+      profileCardStatus.textContent = message;
+      profileStatus.textContent = message;
+    }
   }
 
   function activeReplayKey() {
@@ -154,10 +259,14 @@
       const title = document.createElement("strong");
       const meta = document.createElement("div");
       const timeline = document.createElement("div");
+      const actions = document.createElement("div");
+      const inspect = document.createElement("button");
+      const remove = document.createElement("button");
       card.className = "replay-card";
       head.className = "replay-card__head";
       meta.className = "replay-card__meta";
       timeline.className = "replay-card__timeline";
+      actions.className = "replay-card__actions";
       title.textContent = (record.result === "victory" ? "Victory" : "Defeat") + " - " + (record.faction || "Magic Sheep");
       meta.textContent = formatReplayTime(record.time) + " | " + (record.difficulty || "normal").toUpperCase() + " | " + (record.enemiesDestroyed || 0) + " enemies destroyed";
       (record.timeline || []).slice(-4).forEach(function (event) {
@@ -165,8 +274,23 @@
         row.textContent = formatReplayTime(event.time) + " - " + event.title;
         timeline.append(row);
       });
+      inspect.type = "button";
+      inspect.textContent = "Open Timeline";
+      inspect.addEventListener("click", function () {
+        timeline.classList.toggle("is-open");
+        inspect.textContent = timeline.classList.contains("is-open") ? "Close Timeline" : "Open Timeline";
+      });
+      remove.type = "button";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", function () {
+        const all = JSON.parse(localStorage.getItem(activeReplayKey()) || "[]");
+        all.splice(records.indexOf(record), 1);
+        localStorage.setItem(activeReplayKey(), JSON.stringify(all));
+        renderReplays();
+      });
+      actions.append(inspect, remove);
       head.append(title, meta);
-      card.append(head, timeline);
+      card.append(head, timeline, actions);
       replayList.append(card);
     });
   }
@@ -176,12 +300,34 @@
     return "magic-sheep-story-" + name + "-slot-" + slot;
   }
 
-  function createProfile() {
+  async function createProfile() {
     const name = profileUsername.value.trim();
-    const pin = profilePin.value.trim();
-    if (!name || !pin) {
-      profileStatus.textContent = "Enter a name and PIN.";
+    const password = profilePassword.value.trim();
+    if (!name || !password) {
+      profileStatus.textContent = "Enter a name and password.";
       return;
+    }
+    if (password.length < 4) {
+      profileStatus.textContent = "Password needs at least 4 characters.";
+      return;
+    }
+    if (serverOnline && serverAccounts) {
+      try {
+        const data = await api("/api/accounts/create", {
+          method: "POST",
+          body: JSON.stringify({ name, password })
+        });
+        localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name: data.account.name, password, cloud: true }));
+        profileStatus.textContent = "Cloud commander created.";
+        profilePassword.value = "";
+        renderProfile();
+        renderReplays();
+        closeAccountScreen("Logged in as " + data.account.name + ".");
+        return;
+      } catch (error) {
+        profileStatus.textContent = error.message;
+        return;
+      }
     }
     const accounts = readAccounts();
     const key = profileKey(name);
@@ -189,28 +335,56 @@
       profileStatus.textContent = "That commander already exists.";
       return;
     }
-    accounts[key] = { name, pin, createdAt: new Date().toISOString() };
+    accounts[key] = { name, password, createdAt: new Date().toISOString() };
     writeAccounts(accounts);
     localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name }));
     profileStatus.textContent = "Commander created.";
-    profilePin.value = "";
+    profilePassword.value = "";
     renderProfile();
     renderReplays();
+    closeAccountScreen("Logged in as " + name + ".");
   }
 
-  function loginProfile() {
+  async function loginProfile() {
     const name = profileUsername.value.trim();
-    const pin = profilePin.value.trim();
+    const password = profilePassword.value.trim();
+    if (serverOnline && serverAccounts) {
+      try {
+        const data = await api("/api/accounts/login", {
+          method: "POST",
+          body: JSON.stringify({ name, password })
+        });
+        localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name: data.account.name, password, cloud: true }));
+        if (data.account.stats) localStorage.setItem("magic-sheep-profile-stats-" + profileKey(data.account.name), JSON.stringify(data.account.stats));
+        if (data.account.replays) localStorage.setItem("magic-sheep-replays-" + profileKey(data.account.name), JSON.stringify(data.account.replays));
+        profileStatus.textContent = "Cloud login ready.";
+        profilePassword.value = "";
+        renderProfile();
+        renderReplays();
+        closeAccountScreen("Logged in as " + data.account.name + ".");
+        return;
+      } catch (error) {
+        profileStatus.textContent = error.message;
+        return;
+      }
+    }
     const account = readAccounts()[profileKey(name)];
-    if (!account || account.pin !== pin) {
-      profileStatus.textContent = "Name or PIN did not match.";
+    const savedPassword = account && (account.password || account.pin);
+    if (!account || savedPassword !== password) {
+      profileStatus.textContent = "Name or password did not match.";
       return;
+    }
+    if (!account.password && account.pin) {
+      const accounts = readAccounts();
+      accounts[profileKey(name)] = Object.assign({}, account, { password, pin: undefined });
+      writeAccounts(accounts);
     }
     localStorage.setItem(CURRENT_PROFILE_KEY, JSON.stringify({ name: account.name }));
     profileStatus.textContent = "Logged in.";
-    profilePin.value = "";
+    profilePassword.value = "";
     renderProfile();
     renderReplays();
+    closeAccountScreen("Logged in as " + account.name + ".");
   }
 
   function saveRoom(room) {
@@ -311,6 +485,12 @@
     window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1" + net;
   }
 
+  function observeRoomCode(code) {
+    if (!code) return;
+    const net = serverOnline ? "&net=1&player=spectator" : "";
+    window.location.href = "game.html?room=" + encodeURIComponent(code) + "&start=1" + net;
+  }
+
   function readSession(code) {
     const key = "war-of-the-sheep-session-" + code;
     try {
@@ -344,10 +524,14 @@
     try {
       const data = await api("/api/status");
       serverOnline = Boolean(data.multiplayer);
+      serverAccounts = Boolean(data.accounts);
+      googleOAuthReady = Boolean(data.googleOAuth);
       const localHost = ["127.0.0.1", "localhost", ""].includes(window.location.hostname);
-      status.textContent = localHost ? "Local multiplayer server ready." : "Public multiplayer server ready.";
+      status.textContent = localHost ? "Local multiplayer server ready." : "Public multiplayer server ready. Accounts need persistent storage on Render to survive server upgrades.";
     } catch (_error) {
       serverOnline = false;
+      serverAccounts = false;
+      googleOAuthReady = false;
     }
   }
 
@@ -647,6 +831,8 @@
 
     copyCode.disabled = !room;
     copyLink.disabled = !room;
+    reconnectRoom.disabled = !room || !room.started || !session;
+    observeRoom.disabled = !room || !serverOnline || !room.started;
     quitLobby.disabled = !room;
     addAi.disabled = !room || !isHost || room.training || room.players.length >= room.maxPlayers;
     addAi.title = !room
@@ -661,6 +847,37 @@
       : room && !isHost ? "Waiting for Host"
       : room && room.players.length < room.maxPlayers ? "Waiting for Players"
       : "Start Skirmish";
+    renderLobbyChat(room);
+  }
+
+  function renderLobbyChat(room) {
+    if (!lobbyChatLog || !lobbyChatForm || !lobbyChatInput) return;
+    const button = lobbyChatForm.querySelector("button");
+    const canChat = Boolean(room && !room.training && readSession(room.code));
+    if (button) button.disabled = !canChat;
+    lobbyChatInput.disabled = !canChat;
+    lobbyChatLog.innerHTML = "";
+    if (!room) {
+      const empty = document.createElement("span");
+      empty.textContent = "Create or join a room to chat.";
+      lobbyChatLog.append(empty);
+      return;
+    }
+    const messages = room.chat || [];
+    if (!messages.length) {
+      const empty = document.createElement("span");
+      empty.textContent = canChat ? "No lobby messages yet." : "Join this room to chat.";
+      lobbyChatLog.append(empty);
+      return;
+    }
+    messages.slice(-12).forEach(function (message) {
+      const line = document.createElement("span");
+      const name = document.createElement("b");
+      name.textContent = (message.name || "Shepherd") + ": ";
+      line.append(name, document.createTextNode(message.text || ""));
+      lobbyChatLog.append(line);
+    });
+    lobbyChatLog.scrollTop = lobbyChatLog.scrollHeight;
   }
 
   function matchLabel(type) {
@@ -885,6 +1102,15 @@
     const matchSize = matchTeamSizes(chosenMatchType);
     const maxPlayers = matchSize ? matchSize.total : Number(formData.get("playerCount"));
     const chosenMap = String(formData.get("mapName") || "");
+    rememberPreferences({
+      hostName: String(formData.get("hostName") || ""),
+      hostFaction: getSelectedValue(hostForm, "hostFaction"),
+      matchType: chosenMatchType,
+      playerCount: String(maxPlayers),
+      mapName: chosenMap,
+      hostAiDifficulty: String(formData.get("hostAiDifficulty") || "normal"),
+      hostAiStyle: String(formData.get("hostAiStyle") || "balanced")
+    });
     if (selectedMapPlayers(chosenMap) !== maxPlayers) {
       status.textContent = "Choose a " + maxPlayers + "-player map for a " + maxPlayers + "-player room.";
       fillMapSelect(mapName, maxPlayers);
@@ -956,13 +1182,18 @@
   playerCount.addEventListener("change", function () {
     const count = Number(playerCount.value);
     fillMapSelect(mapName, count);
+    rememberPreferences({ playerCount: String(count), mapName: mapName.value });
     status.textContent = "Showing " + count + "-player maps.";
   });
 
-  mapName.addEventListener("change", updateMapPreview);
+  mapName.addEventListener("change", function () {
+    rememberPreferences({ mapName: mapName.value });
+    updateMapPreview();
+  });
 
   matchType.addEventListener("change", function () {
     const neededPlayers = matchPlayerCount(matchType.value);
+    rememberPreferences({ matchType: matchType.value });
     if (matchType.value !== "ffa") {
       playerCount.value = String(neededPlayers);
       fillMapSelect(mapName, neededPlayers);
@@ -979,6 +1210,10 @@
 
     const formData = new FormData(joinForm);
     const code = String(formData.get("roomCode") || "").trim().toUpperCase();
+    rememberPreferences({
+      joinName: String(formData.get("joinName") || ""),
+      joinFaction: getSelectedValue(joinForm, "joinFaction")
+    });
     if (!/^[A-Z2-9]{5,6}$/.test(code)) {
       status.textContent = "Enter a valid room code.";
       return;
@@ -1056,6 +1291,11 @@
     event.preventDefault();
 
     const formData = new FormData(trainForm);
+    rememberPreferences({
+      trainName: String(formData.get("trainName") || ""),
+      trainFaction: getSelectedValue(trainForm, "trainFaction"),
+      trainingMap: String(formData.get("trainingMap") || "")
+    });
     const code = makeRoomCode();
     const room = {
       code,
@@ -1089,6 +1329,15 @@
     launchRoom(code);
   });
 
+  if (quickMatch) {
+    quickMatch.addEventListener("click", function () {
+      const normal = document.querySelector("#ai-difficulty option[value='normal']");
+      if (normal) document.querySelector("#ai-difficulty").value = "normal";
+      status.textContent = "Quick match selected. Launching a balanced AI game.";
+      trainForm.requestSubmit();
+    });
+  }
+
   roomCodeInput.addEventListener("input", function () {
     roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   });
@@ -1102,6 +1351,49 @@
   copyLink.addEventListener("click", function () {
     if (activeRoom) {
       copyText(inviteLink(activeRoom.code), "Invite link copied.");
+    }
+  });
+
+  reconnectRoom.addEventListener("click", function () {
+    if (!activeRoom) return;
+    const session = readSession(activeRoom.code);
+    if (!session) {
+      status.textContent = "No saved player slot for this room.";
+      return;
+    }
+    launchRoom(activeRoom.code);
+  });
+
+  observeRoom.addEventListener("click", function () {
+    if (!activeRoom) return;
+    observeRoomCode(activeRoom.code);
+  });
+
+  lobbyChatForm.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    if (!activeRoom) return;
+    const text = lobbyChatInput.value.trim();
+    if (!text) return;
+    if (!serverOnline) {
+      status.textContent = "Lobby chat needs the multiplayer server.";
+      return;
+    }
+    const session = readSession(activeRoom.code);
+    if (!session) {
+      status.textContent = "Join this room before chatting.";
+      return;
+    }
+    try {
+      const data = await api("/api/rooms/" + encodeURIComponent(activeRoom.code) + "/chat", {
+        method: "POST",
+        body: JSON.stringify({ playerId: session.playerId, text })
+      });
+      lobbyChatInput.value = "";
+      saveRoom(data.room);
+      renderRoom(data.room);
+      status.textContent = "Message sent.";
+    } catch (error) {
+      status.textContent = error.message;
     }
   });
 
@@ -1129,14 +1421,54 @@
 
   profileForm.addEventListener("submit", function (event) {
     event.preventDefault();
+    if (accountMode === "create") {
+      createProfile();
+      return;
+    }
     loginProfile();
   });
 
   profileCreate.addEventListener("click", createProfile);
 
+  openAccount.addEventListener("click", function () {
+    openAccountScreen("login");
+  });
+
+  accountBack.addEventListener("click", function () {
+    closeAccountScreen();
+  });
+
+  guestLogin.addEventListener("click", function () {
+    localStorage.removeItem(CURRENT_PROFILE_KEY);
+    profileStatus.textContent = "Playing as guest.";
+    profileCardStatus.textContent = "Playing as guest.";
+    renderProfile();
+    renderReplays();
+    closeAccountScreen("Playing as guest.");
+  });
+
+  googleLogin.addEventListener("click", async function () {
+    if (!googleOAuthReady) {
+      profileStatus.textContent = "Google login needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Render first. Use password login for now.";
+      return;
+    }
+    try {
+      await api("/api/auth/google");
+    } catch (error) {
+      profileStatus.textContent = error.message;
+    }
+  });
+
+  accountTabs.forEach(function (button) {
+    button.addEventListener("click", function () {
+      setAccountMode(button.dataset.accountMode);
+    });
+  });
+
   profileLogout.addEventListener("click", function () {
     localStorage.removeItem(CURRENT_PROFILE_KEY);
     profileStatus.textContent = "Playing as guest.";
+    profileCardStatus.textContent = "Playing as guest.";
     renderProfile();
     renderReplays();
   });
@@ -1237,8 +1569,17 @@
     showPanel("join-panel", false, true);
   }
 
+  applyPreferences();
   fillMapSelect(mapName, Number(playerCount.value));
+  const prefs = readPreferences();
+  if (prefs.mapName && Array.from(mapName.options).some(function (option) { return option.value === prefs.mapName; })) {
+    mapName.value = prefs.mapName;
+  }
   fillMapSelect(trainingMap, 2);
+  if (prefs.trainingMap && Array.from(trainingMap.options).some(function (option) { return option.value === prefs.trainingMap; })) {
+    trainingMap.value = prefs.trainingMap;
+  }
+  updateMapPreview();
   renderProfile();
   detectServer().then(loadRoomFromUrl);
 })();

@@ -71,6 +71,8 @@
             <span class="command-group" data-command-group="base">Base</span>
             <button id="train-worker" data-command-button="base" type="button">Train<br>Worker</button>
             <button id="cast-ability" data-command-button="base" type="button">Faction<br>Ability</button>
+            <span class="command-group" data-command-group="rally">Rally</span>
+            <button id="set-rally" data-command-button="rally" type="button">Set<br>Rally</button>
             <span class="command-group" data-command-group="unit">Unit Orders</span>
             <button id="unit-move" data-command-button="unit" type="button">Move</button>
             <button id="unit-stop" data-command-button="unit" type="button">Stop</button>
@@ -107,6 +109,15 @@
             <button id="upgrade-faction-tech" data-command-button="forge" type="button">Faction<br>Upgrade</button>
           </div>
           <div class="command-tooltip" id="command-tooltip" hidden></div>
+          <section class="game-chat" aria-label="Team chat">
+            <div id="game-chat-log" class="game-chat__log">
+              <span>No messages yet.</span>
+            </div>
+            <form id="game-chat-form" class="game-chat__form">
+              <input id="game-chat-input" type="text" maxlength="180" placeholder="Team chat" autocomplete="off">
+              <button type="submit">Send</button>
+            </form>
+          </section>
           <div class="mobile-actions" id="mobile-actions" aria-label="Touch commands">
             <button id="mobile-select-idle" type="button">Idle</button>
             <button id="mobile-move" type="button">Move</button>

@@ -7,7 +7,10 @@ const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "0.0.0.0";
 const outputDir = path.join(__dirname, "outputs");
 const publicDir = fs.existsSync(outputDir) ? outputDir : __dirname;
+const dataDir = path.join(__dirname, "work");
+const accountsFile = path.join(dataDir, "server-accounts.json");
 const rooms = new Map();
+let accounts = loadAccounts();
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const mimeTypes = {
@@ -57,6 +60,45 @@ function readBody(req) {
   });
 }
 
+function loadAccounts() {
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    return JSON.parse(fs.readFileSync(accountsFile, "utf8"));
+  } catch (_error) {
+    return {};
+  }
+}
+
+function saveAccounts() {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(accountsFile, JSON.stringify(accounts, null, 2));
+}
+
+function accountKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.pbkdf2Sync(String(password || ""), salt, 120000, 32, "sha256").toString("hex");
+  return { salt, hash };
+}
+
+function publicAccount(account) {
+  return {
+    name: account.name,
+    createdAt: account.createdAt,
+    stats: account.stats || { matches: 0, wins: 0 },
+    story: account.story || {},
+    replays: (account.replays || []).slice(0, 20)
+  };
+}
+
+function verifyPassword(account, password) {
+  if (!account || !account.salt || !account.hash) return false;
+  const check = hashPassword(password, account.salt);
+  return crypto.timingSafeEqual(Buffer.from(account.hash, "hex"), Buffer.from(check.hash, "hex"));
+}
+
 function publicRoom(room) {
   return {
     code: room.code,
@@ -80,6 +122,13 @@ function publicRoom(room) {
       ai: Boolean(player.ai),
       host: index === 0,
       ready: Boolean(player.ready)
+    })),
+    chat: (room.chat || []).slice(-40).map((message) => ({
+      id: message.id,
+      at: message.at,
+      playerIndex: message.playerIndex,
+      name: message.name,
+      text: message.text
     }))
   };
 }
@@ -216,7 +265,70 @@ function requireHost(body, room, res) {
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/status") {
-    json(res, 200, { ok: true, multiplayer: true });
+    json(res, 200, { ok: true, multiplayer: true, accounts: true, googleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts/create") {
+    const body = await readBody(req);
+    const name = String(body.name || "").trim().slice(0, 18);
+    const password = String(body.password || "");
+    if (!name || password.length < 4) {
+      json(res, 400, { error: "Enter a commander name and a password with at least 4 characters." });
+      return;
+    }
+    const key = accountKey(name);
+    if (accounts[key]) {
+      json(res, 409, { error: "That commander already exists." });
+      return;
+    }
+    const passwordRecord = hashPassword(password);
+    accounts[key] = {
+      name,
+      salt: passwordRecord.salt,
+      hash: passwordRecord.hash,
+      createdAt: new Date().toISOString(),
+      stats: { matches: 0, wins: 0 },
+      story: {},
+      replays: []
+    };
+    saveAccounts();
+    json(res, 200, { account: publicAccount(accounts[key]) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts/login") {
+    const body = await readBody(req);
+    const account = accounts[accountKey(body.name)];
+    if (!verifyPassword(account, body.password)) {
+      json(res, 401, { error: "Name or password did not match." });
+      return;
+    }
+    json(res, 200, { account: publicAccount(account) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts/sync") {
+    const body = await readBody(req);
+    const account = accounts[accountKey(body.name)];
+    if (!verifyPassword(account, body.password)) {
+      json(res, 401, { error: "Name or password did not match." });
+      return;
+    }
+    account.stats = Object.assign(account.stats || {}, body.stats || {});
+    account.story = Object.assign(account.story || {}, body.story || {});
+    if (Array.isArray(body.replays)) account.replays = body.replays.slice(0, 20);
+    saveAccounts();
+    json(res, 200, { account: publicAccount(account) });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/auth/google") {
+    json(res, 501, {
+      error: process.env.GOOGLE_CLIENT_ID
+        ? "Google OAuth is configured, but the sign-in callback is not connected yet."
+        : "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Render to enable Google sign-in."
+    });
     return;
   }
 
@@ -238,6 +350,7 @@ async function handleApi(req, res, url) {
       players: [host],
       alliances: [],
       allianceRequests: [],
+      chat: [],
       commands: [],
       snapshot: null
     };
@@ -261,6 +374,31 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && !action) {
+    json(res, 200, { room: publicRoom(room) });
+    return;
+  }
+
+  if (req.method === "POST" && action === "chat") {
+    const body = await readBody(req);
+    const index = playerIndex(room, body.playerId);
+    const text = String(body.text || "").trim().slice(0, 180);
+    if (index < 0) {
+      json(res, 404, { error: "Player not found", room: publicRoom(room) });
+      return;
+    }
+    if (!text) {
+      json(res, 400, { error: "Enter a message.", room: publicRoom(room) });
+      return;
+    }
+    room.chat = room.chat || [];
+    room.chat.push({
+      id: room.chat.length + 1,
+      at: Date.now(),
+      playerIndex: index,
+      name: room.players[index].name || "Shepherd " + (index + 1),
+      text
+    });
+    if (room.chat.length > 80) room.chat.splice(0, room.chat.length - 80);
     json(res, 200, { room: publicRoom(room) });
     return;
   }

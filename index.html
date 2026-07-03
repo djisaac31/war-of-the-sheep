@@ -47,16 +47,44 @@
             <strong id="profile-name">Guest</strong>
             <small id="profile-summary">Replays save locally.</small>
           </div>
-          <form id="profile-form" class="profile-form">
-            <input id="profile-username" type="text" maxlength="18" placeholder="Name" autocomplete="username">
-            <input id="profile-pin" type="password" maxlength="12" placeholder="PIN" autocomplete="current-password">
-            <button id="profile-login" type="submit">Log In</button>
-            <button id="profile-create" type="button">Create</button>
+          <div class="profile-actions">
+            <button id="open-account" type="button">Log In / Create Account</button>
             <button id="profile-logout" type="button">Log Out</button>
-          </form>
-          <p id="profile-status" class="profile-status"></p>
+          </div>
+          <p id="profile-card-status" class="profile-status"></p>
         </section>
       </nav>
+
+      <section id="account-screen" class="account-screen is-hidden" aria-labelledby="account-title">
+        <div class="account-panel">
+          <button id="account-back" class="ghost-button account-back" type="button">Back</button>
+          <p class="eyebrow">Commander Account</p>
+          <h1 id="account-title">Log in or create your flock profile</h1>
+          <p class="account-copy">Save your commander name, replays, story progress, and match stats on this browser.</p>
+
+          <div class="account-tabs" role="tablist" aria-label="Account actions">
+            <button id="account-tab-login" class="is-active" type="button" data-account-mode="login">Log In</button>
+            <button id="account-tab-create" type="button" data-account-mode="create">Create Account</button>
+          </div>
+
+          <form id="profile-form" class="profile-form account-form">
+            <label>
+              <span>Commander Name</span>
+              <input id="profile-username" type="text" maxlength="18" placeholder="Derek" autocomplete="username">
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="profile-password" type="password" minlength="4" maxlength="32" placeholder="Password" autocomplete="current-password">
+            </label>
+            <button id="profile-login" type="submit">Log In</button>
+            <button id="profile-create" type="button">Create Account</button>
+          </form>
+
+          <button id="google-login" class="google-button" type="button">Continue with Google</button>
+          <button id="guest-login" class="ghost-button" type="button">Keep Playing as Guest</button>
+          <p id="profile-status" class="profile-status account-status"></p>
+        </div>
+      </section>
 
       <section class="hero" aria-labelledby="page-title">
         <div class="hero__art" aria-hidden="true">
@@ -297,6 +325,9 @@
             <button class="button button--start" type="submit" data-testid="train-game-button">
               Start Training
             </button>
+            <button class="button button--secondary" id="quick-match" type="button">
+              Quick Match vs AI
+            </button>
           </form>
         </div>
 
@@ -479,6 +510,20 @@
                 <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"></path>
               </svg>
             </button>
+            <button class="icon-button" id="reconnect-room" type="button" disabled aria-label="Reconnect to match" title="Reconnect to match">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 15-6"></path>
+                <path d="M18 3v6h-6"></path>
+                <path d="M21 12a9 9 0 0 1-15 6"></path>
+                <path d="M6 21v-6h6"></path>
+              </svg>
+            </button>
+            <button class="icon-button" id="observe-room" type="button" disabled aria-label="Observe match" title="Observe match">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
           </div>
 
           <dl class="room-meta">
@@ -495,6 +540,16 @@
           <div class="roster" id="roster">
             <div class="empty-state">Host a game or enter a room code.</div>
           </div>
+
+          <section class="lobby-chat" aria-label="Lobby chat">
+            <div id="lobby-chat-log" class="lobby-chat__log">
+              <span>No lobby messages yet.</span>
+            </div>
+            <form id="lobby-chat-form" class="lobby-chat__form">
+              <input id="lobby-chat-input" type="text" maxlength="180" placeholder="Message the lobby" autocomplete="off">
+              <button type="submit" disabled>Send</button>
+            </form>
+          </section>
 
           <button class="button button--secondary" id="add-ai" type="button" disabled>
             Add AI
