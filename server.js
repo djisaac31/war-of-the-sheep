@@ -12,6 +12,7 @@ const accountsFile = path.join(dataDir, "server-accounts.json");
 const rooms = new Map();
 let accounts = loadAccounts();
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const roomStreams = new Map();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -38,6 +39,27 @@ function json(res, status, data) {
     "Content-Length": Buffer.byteLength(body)
   });
   res.end(body);
+}
+
+function writeEvent(res, event, data) {
+  res.write("event: " + event + "\n");
+  res.write("data: " + JSON.stringify(data || {}) + "\n\n");
+}
+
+function broadcastRoom(code, event, data) {
+  const clients = roomStreams.get(code);
+  if (!clients) return;
+  clients.forEach((res) => {
+    try {
+      writeEvent(res, event, data);
+    } catch (_error) {
+      clients.delete(res);
+    }
+  });
+}
+
+function broadcastPublicRoom(room) {
+  broadcastRoom(room.code, "room", { room: publicRoom(room) });
 }
 
 function readBody(req) {
@@ -373,6 +395,34 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && action === "events") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no"
+    });
+    res.write(": connected\n\n");
+    const clients = roomStreams.get(code) || new Set();
+    clients.add(res);
+    roomStreams.set(code, clients);
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch (_error) {
+        clearInterval(heartbeat);
+      }
+    }, 25000);
+    writeEvent(res, "room", { room: publicRoom(room) });
+    if (room.snapshot) writeEvent(res, "snapshot", { snapshot: room.snapshot });
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      clients.delete(res);
+      if (!clients.size) roomStreams.delete(code);
+    });
+    return;
+  }
+
   if (req.method === "GET" && !action) {
     json(res, 200, { room: publicRoom(room) });
     return;
@@ -399,6 +449,7 @@ async function handleApi(req, res, url) {
       text
     });
     if (room.chat.length > 80) room.chat.splice(0, room.chat.length - 80);
+    broadcastRoom(code, "chat", { room: publicRoom(room), message: room.chat[room.chat.length - 1] });
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -413,6 +464,7 @@ async function handleApi(req, res, url) {
     player.team = slotTeam(room.matchType || "1v1", room.players.length);
     player.ready = false;
     room.players.push(player);
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room), playerId: player.id, playerIndex: room.players.length - 1 });
     return;
   }
@@ -432,6 +484,7 @@ async function handleApi(req, res, url) {
       ai: true,
       ready: true
     }, "AI Shepherd"));
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -444,6 +497,7 @@ async function handleApi(req, res, url) {
       return;
     }
     room.players[index].ready = Boolean(body.ready);
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -457,10 +511,12 @@ async function handleApi(req, res, url) {
     }
     if (index === 0 || room.players.length <= 1) {
       rooms.delete(code);
+      broadcastRoom(code, "closed", { code });
       json(res, 200, { left: true, closed: true });
       return;
     }
     removePlayer(room, index);
+    broadcastPublicRoom(room);
     json(res, 200, { left: true, room: publicRoom(room) });
     return;
   }
@@ -474,6 +530,7 @@ async function handleApi(req, res, url) {
       return;
     }
     room.players[index].team = cleanTeam(body.team, room.matchType || "1v1", index);
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -494,6 +551,7 @@ async function handleApi(req, res, url) {
       return;
     }
     room.players[index].faction = cleanFaction(body.faction);
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -527,12 +585,14 @@ async function handleApi(req, res, url) {
       removeAllianceRequests(room, fromId, toId);
       room.alliances = room.alliances || [];
       room.alliances.push(key);
+      broadcastPublicRoom(room);
       json(res, 200, { room: publicRoom(room), accepted: true });
       return;
     }
     removeAllianceRequests(room, fromId, toId);
     room.allianceRequests = room.allianceRequests || [];
     room.allianceRequests.push({ fromId, toId });
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room), requested: true });
     return;
   }
@@ -563,6 +623,7 @@ async function handleApi(req, res, url) {
       room.alliances = room.alliances || [];
       if (!hasAlliance(room, fromIndex, toIndex)) room.alliances.push(key);
     }
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -577,6 +638,7 @@ async function handleApi(req, res, url) {
     }
     removeAlliance(room, fromIndex, targetIndex);
     removeAllianceRequests(room, room.players[fromIndex].id, room.players[targetIndex].id);
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -592,6 +654,7 @@ async function handleApi(req, res, url) {
       return;
     }
     room.started = true;
+    broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room) });
     return;
   }
@@ -605,6 +668,7 @@ async function handleApi(req, res, url) {
       command: body.command || {}
     });
     if (room.commands.length > 500) room.commands.splice(0, room.commands.length - 500);
+    broadcastRoom(code, "command", { command: room.commands[room.commands.length - 1] });
     json(res, 200, { ok: true, nextId: room.commands.length });
     return;
   }
@@ -618,6 +682,7 @@ async function handleApi(req, res, url) {
   if (req.method === "PUT" && action === "snapshot") {
     const body = await readBody(req);
     room.snapshot = { at: Date.now(), data: body.snapshot || null };
+    broadcastRoom(code, "snapshot", { snapshot: room.snapshot });
     json(res, 200, { ok: true });
     return;
   }

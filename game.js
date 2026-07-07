@@ -10,6 +10,8 @@
     lollipops: document.querySelector("#lollipops"),
     marshmallows: document.querySelector("#marshmallows"),
     wool: document.querySelector("#wool"),
+    matchTimer: document.querySelector("#match-timer"),
+    pauseToggle: document.querySelector("#pause-toggle"),
     workerCount: document.querySelector("#worker-count"),
     idleWorkers: document.querySelector("#idle-workers"),
     idleWorkerButton: document.querySelector("#idle-worker-button"),
@@ -66,6 +68,9 @@
     patrol: document.querySelector("#unit-patrol"),
     formation: document.querySelector("#unit-formation"),
     ping: document.querySelector("#map-ping"),
+    attackPing: document.querySelector("#attack-ping"),
+    defendPing: document.querySelector("#defend-ping"),
+    helpPing: document.querySelector("#help-ping"),
     heroAbility: document.querySelector("#hero-ability"),
     base: document.querySelector("#build-base"),
     supply: document.querySelector("#build-supply"),
@@ -111,6 +116,7 @@
   let formationMode = "box";
   let audioContext = null;
   let last = performance.now();
+  let paused = false;
   let nextId = 1;
   let aiTimer = 0;
   let aiBuildTimer = 0;
@@ -134,13 +140,15 @@
     lastChatPoll: 0,
     lastRoomPoll: 0,
     applyingSnapshot: false,
+    live: null,
+    liveConnected: false,
     tick: 0
   };
   const networkRates = {
-    commandPoll: 0.05,
-    hostSnapshot: 0.055,
-    guestSnapshot: 0.045,
-    roomPoll: 2.0
+    commandPoll: 0.08,
+    hostSnapshot: 0.16,
+    guestSnapshot: 0.18,
+    roomPoll: 2.5
   };
   const playerColors = ["#4ea2ff", "#ff705d", "#7cff9a", "#ffe066", "#c78bff", "#ffad4d"];
   const tutorialFactions = ["Rainbow Sheep", "Mech Sheep", "Fire Sheep"];
@@ -151,9 +159,9 @@
     return;
   }
   let roomSettings = readRoomSettings();
-  const tutorialMode = params.get("tutorial") === "1" || Boolean(roomSettings.tutorial);
-  const tutorialLesson = tutorialMode ? Math.max(1, Math.min(2, Number(params.get("lesson") || roomSettings.tutorialLesson || 1))) : 1;
   const storyMode = params.get("story") === "1" || Boolean(roomSettings.story);
+  const tutorialMode = !storyMode && !roomSettings.training && (params.get("tutorial") === "1" || Boolean(roomSettings.tutorial));
+  const tutorialLesson = tutorialMode ? Math.max(1, Math.min(2, Number(params.get("lesson") || roomSettings.tutorialLesson || 1))) : 1;
   const storyChapter = storyMode ? Math.max(1, Math.min(5, Number(params.get("chapter") || roomSettings.storyChapter || localStorage.getItem("magic-sheep-story-chapter") || 1))) : 1;
   const storySlot = storyMode ? String(params.get("slot") || roomSettings.storySlot || localStorage.getItem("magic-sheep-story-active-slot") || "1") : "1";
   const tutorialFactionIndex = tutorialMode ? tutorialFactions.indexOf((roomSettings.players && roomSettings.players[0] && roomSettings.players[0].faction) || "Rainbow Sheep") : -1;
@@ -361,6 +369,15 @@
     return profile;
   }
   const aiProfile = styledAiProfile(aiProfiles[aiDifficulty] || aiProfiles.normal, aiStyle);
+  function aiStyleLabel(style) {
+    return {
+      balanced: "Balanced AI",
+      rusher: "Rush AI",
+      defender: "Defence AI",
+      expander: "Expansion AI",
+      tech: "Tech AI"
+    }[style] || "Balanced AI";
+  }
   const mapProfiles = {
     "Rainbow Meadow": { tint: "#79c78d", clearings: [[470, 780, 360, 210, -0.1], [1180, 500, 390, 220, 0.05], [1940, 900, 390, 220, 0.16], [1200, 1260, 360, 200, -0.08]], riverY: 1180, player: [360, 780], enemy: [2020, 900], playerGas: [790, 950], enemyGas: [1660, 980] },
     "Candy Meadow": { tint: "#6db978", clearings: [[760, 880, 360, 210, -0.2], [1710, 850, 390, 230, 0.15]], riverY: 1160, player: [330, 820], enemy: [2050, 780], playerGas: [780, 1000], enemyGas: [1640, 990] },
@@ -398,6 +415,9 @@
     timeline: [],
     history: [],
     nextHistorySample: 0,
+    lastAttackAlert: -99,
+    lastAlertTarget: null,
+    lastAlertClicked: -99,
     milestones: {
       firstBarracks: false,
       firstArmy: false,
@@ -409,6 +429,7 @@
     units: [],
     structures: [],
     resources: [],
+    objectives: [],
     effects: [],
     training: []
   };
@@ -782,6 +803,61 @@
     }
   }
 
+  function storeRoomSettings(room) {
+    if (!room) return;
+    const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms") || "{}");
+    rooms[roomCode] = room;
+    localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
+    roomSettings = room;
+    activeMap = mapProfiles[roomSettings.map] || mapProfiles["Candy Meadow"];
+    renderAlliancePanel();
+  }
+
+  function connectLiveRoomStream() {
+    if (!network.enabled || network.live || typeof EventSource === "undefined") return;
+    const session = readSession();
+    const url = "/api/rooms/" + encodeURIComponent(roomCode) + "/events" + (session && session.playerId ? "?playerId=" + encodeURIComponent(session.playerId) : "");
+    const stream = new EventSource(url);
+    network.live = stream;
+    stream.onopen = () => {
+      network.liveConnected = true;
+    };
+    stream.onerror = () => {
+      network.liveConnected = false;
+    };
+    stream.addEventListener("room", (event) => {
+      const data = JSON.parse(event.data || "{}");
+      storeRoomSettings(data.room);
+      renderGameChat((data.room && data.room.chat) || roomSettings.chat || []);
+    });
+    stream.addEventListener("chat", (event) => {
+      const data = JSON.parse(event.data || "{}");
+      if (data.room) storeRoomSettings(data.room);
+      renderGameChat((data.room && data.room.chat) || roomSettings.chat || []);
+    });
+    stream.addEventListener("command", (event) => {
+      if (!isNetworkHost) return;
+      const data = JSON.parse(event.data || "{}");
+      const entry = data.command || {};
+      network.lastCommandId = Math.max(network.lastCommandId, entry.id || 0);
+      if (entry.playerIndex === network.playerIndex) return;
+      applyRemoteCommand(entry.command || {}, entry.playerIndex);
+    });
+    stream.addEventListener("snapshot", (event) => {
+      if (!isNetworkGuest && !isNetworkSpectator) return;
+      const data = JSON.parse(event.data || "{}");
+      if (!data.snapshot || !data.snapshot.data) return;
+      if (data.snapshot.at <= network.lastSnapshotAt) return;
+      network.lastSnapshotAt = data.snapshot.at;
+      applySnapshot(data.snapshot.data);
+    });
+    stream.addEventListener("closed", () => {
+      network.liveConnected = false;
+      say("The room was closed by the host.");
+      stream.close();
+    });
+  }
+
   async function refreshOnlineRoom() {
     if (!network.enabled) return;
     try {
@@ -789,12 +865,7 @@
       if (!response.ok) return;
       const data = await response.json();
       if (!data.room) return;
-      const rooms = JSON.parse(localStorage.getItem("magic-sheep-rts-rooms")) || {};
-      rooms[roomCode] = data.room;
-      localStorage.setItem("magic-sheep-rts-rooms", JSON.stringify(rooms));
-      roomSettings = data.room;
-      activeMap = mapProfiles[roomSettings.map] || mapProfiles["Candy Meadow"];
-      renderAlliancePanel();
+      storeRoomSettings(data.room);
     } catch (_error) {
       say("Online room server not reachable.");
     }
@@ -1105,9 +1176,18 @@
       rangeBonus: 0,
       heroAbilityCooldown: 0
     };
+    if (faction === "rainbow") {
+      unit.maxShield = Math.max(12, Math.round(s.hp * 0.32));
+      unit.shield = unit.maxShield;
+      unit.shieldDelay = 0;
+    }
     if (owner === "enemy" && (storyMode || roomSettings.training)) {
       unit.maxHp = Math.round(unit.maxHp * aiProfile.health);
       unit.hp = unit.maxHp;
+      if (unit.maxShield) {
+        unit.maxShield = Math.max(12, Math.round(unit.maxShield * aiProfile.health));
+        unit.shield = unit.maxShield;
+      }
       unit.damageBonus += Math.round((s.damage || 0) * (aiProfile.damage - 1));
     }
     state.units.push(unit);
@@ -1121,6 +1201,10 @@
     hero.storySpecial = options.special || "Hero";
     hero.maxHp = Math.round(hero.maxHp * (options.hpMultiplier || 1.65));
     hero.hp = hero.maxHp;
+    if (hero.maxShield) {
+      hero.maxShield = Math.max(16, Math.round(hero.maxShield * (options.hpMultiplier || 1.65)));
+      hero.shield = hero.maxShield;
+    }
     hero.damageBonus = options.damageBonus || 0;
     hero.rangeBonus = options.rangeBonus || 0;
     hero.speedBonus = options.speedBonus || 1;
@@ -1156,6 +1240,20 @@
 
   function addResource(type, x, y, amount) {
     state.resources.push({ id: nextId++, type, x, y, amount, radius: type === "lollipop" ? 42 : 48 });
+  }
+
+  function addObjective(type, x, y, name) {
+    state.objectives.push({
+      id: nextId++,
+      type,
+      name,
+      x,
+      y,
+      radius: 86,
+      owner: "neutral",
+      capture: 0,
+      pulse: Math.random() * Math.PI * 2
+    });
   }
 
   function footprintRadius(type) {
@@ -1242,7 +1340,7 @@
 
     if (storyMode) {
       spawnStoryMission(playerStart, enemyStart);
-    } else if (network.enabled && (roomSettings.players || []).length > 2) {
+    } else if (network.enabled) {
       spawnRoomSlots();
     } else {
       spawnStartingFlock("player", pf, playerStart.x, playerStart.y, false, false, 0);
@@ -1253,6 +1351,7 @@
       addResource("lollipop", activeMap.enemyGas[0], activeMap.enemyGas[1], 9999);
     }
     addExpansionResources();
+    addMapObjectives();
     if (storyMode) applyCampaignRewards();
 
     const starts = startPositionsForPlayers((roomSettings.players || []).length || 2);
@@ -1271,7 +1370,7 @@
       say(storyMode ? "Story mission started. Save Rainbow Meadow from the wolves." : "Tutorial mission started. Follow the objectives on the right.");
       updateTutorial(true);
     } else {
-      say("You are commanding " + factionData[pf].name + " on " + (roomSettings.map || "Candy Meadow") + ". Gather Marshmallows, then build a Lollipop Extractor.");
+      say("You are commanding " + factionData[pf].name + " on " + (roomSettings.map || "Candy Meadow") + ". Enemy style: " + aiStyleLabel(aiStyle) + ".");
     }
   }
 
@@ -1755,6 +1854,19 @@
     });
   }
 
+  function addMapObjectives() {
+    if (storyMode && storyChapter === 1) {
+      addObjective("watch", 1040, 690, "Rainbow Watch Shrine");
+      addObjective("income", 1430, 960, "Candy Blessing Shrine");
+      return;
+    }
+    const spots = expansionSpots();
+    const first = spots[0] || { x: world.w / 2 - 210, y: world.h / 2 };
+    const second = spots[1] || { x: world.w / 2 + 210, y: world.h / 2 };
+    addObjective("watch", first.x, first.y + 210, "Watch Shrine");
+    addObjective("income", second.x, second.y - 210, "Candy Shrine");
+  }
+
   function spawnWolfWave(x, y, tx, ty, types, tag) {
     types.forEach((type, index) => {
       const offset = formationOffset(index, types.length);
@@ -2046,6 +2158,13 @@
     return (roomSettings.players || []).some((player, index) => player.ai && !roomPlayersAllied(localPlayerIndex(), index));
   }
 
+  function alliedSideIsAiOnly() {
+    if (!network.enabled) return false;
+    const localIndex = localPlayerIndex();
+    const allies = (roomSettings.players || []).filter((player, index) => player && index !== localIndex && roomPlayersAllied(localIndex, index));
+    return allies.length > 0 && allies.every((player) => player.ai);
+  }
+
   function spend(type, owner = "player") {
     const c = costs[type];
     const side = sideFor(owner);
@@ -2225,6 +2344,9 @@
     setButtonTooltip(ui.patrol, commandHelpText.patrol);
     setButtonTooltip(ui.formation, "Formation (F): cycle Box, Line, and Spread movement.");
     setButtonTooltip(ui.ping, "Map Ping (G): mark a location for teammates.");
+    setButtonTooltip(ui.attackPing, "Attack Ping: mark an enemy base, army, or attack route for teammates.");
+    setButtonTooltip(ui.defendPing, "Defend Ping: mark a base or ally position that needs protection.");
+    setButtonTooltip(ui.helpPing, "Help Ping: ask teammates for support at a location.");
     setButtonTooltip(ui.heroAbility, "Hero Power (Q): use the selected hero's unique ability.");
     setButtonTooltip(ui.ability, commandHelpText.ability + "\nCurrent: " + factionData[state.player.faction].ability);
     setButtonTooltip(ui.unloadTower, commandHelpText.unloadTower);
@@ -2236,7 +2358,7 @@
   }
 
   function queueTraining(type, owner = "player") {
-    if (owner === "player" && !canIssueOrders()) return;
+    if (owner === "player" && !canIssueOrders()) return false;
     const producerType = type === "worker" ? "base" : type === "extraHeavy" ? "heavyTech" : type === "flyer" ? "hangar" : "production";
     const producer = readyStructure(producerType, owner);
     if (!producer) {
@@ -2246,17 +2368,17 @@
         else if (type === "flyer") say("Build " + factionData[sideFor(owner).faction].hangar + " before training " + unitLabel(type, sideFor(owner).faction) + ".");
         else say("Build a Barracks before training army units.");
       }
-      return;
+      return false;
     }
     if (type === "elite" && !readyStructure("forge", owner)) {
       if (owner === "player") say("Build a Forge to unlock elite units.");
-      return;
+      return false;
     }
     if (type === "support" && !readyStructure("forge", owner)) {
       if (owner === "player") say("Build a Forge to unlock support units.");
-      return;
+      return false;
     }
-    if (!spend(type, owner)) return;
+    if (!spend(type, owner)) return false;
     sideFor(owner).woolUsed += stats[type].wool;
     state.training.push({
       owner,
@@ -2267,7 +2389,19 @@
       elapsed: 0,
       duration: trainTimes[type]
     });
-    if (owner === "player") say(type === "worker" ? "Worker queued." : unitLabel(type, state.player.faction) + " queued.");
+    if (owner === "player") {
+      playEffectTone(type === "worker" ? 420 : 470, 0.07, 0.025);
+      say(type === "worker" ? "Worker queued." : unitLabel(type, state.player.faction) + " queued.");
+    }
+    return true;
+  }
+
+  function issueTrain(type) {
+    if (isNetworkGuest) {
+      if (queueTraining(type, "player")) sendNetworkCommand({ action: "train", type });
+      return;
+    }
+    queueTraining(type, "player");
   }
 
   function finishTraining(job) {
@@ -2283,6 +2417,7 @@
     if (job.owner === "player") {
       selected.clear();
       selected.add(unit.id);
+      playEffectTone(job.type === "worker" ? 660 : 720, 0.11, 0.035);
       say(job.type === "worker" ? "Worker ready." : unitLabel(job.type, job.faction) + " ready.");
       if (job.type !== "worker") {
         recordMilestone(
@@ -2454,13 +2589,17 @@
       say("Cannot build there.");
       return true;
     }
+    const buildX = geyser ? geyser.x : placement.x;
+    const buildY = geyser ? geyser.y : placement.y;
     if (isNetworkGuest) {
+      if (!spend(placement.type)) return true;
+      assignBuildTask(worker, placement.type, buildX, buildY, geyser ? geyser.id : null);
       sendNetworkCommand({
         action: "build",
         workerId: placement.workerId,
         type: placement.type,
-        x: geyser ? geyser.x : placement.x,
-        y: geyser ? geyser.y : placement.y,
+        x: buildX,
+        y: buildY,
         resourceId: geyser ? geyser.id : null
       });
       placement = null;
@@ -2468,8 +2607,6 @@
       return true;
     }
     if (!spend(placement.type)) return true;
-    const buildX = geyser ? geyser.x : placement.x;
-    const buildY = geyser ? geyser.y : placement.y;
     assignBuildTask(worker, placement.type, buildX, buildY, geyser ? geyser.id : null);
     placement = null;
     say("Worker moving to build site.");
@@ -2714,14 +2851,21 @@
     return "Swarm Embers";
   }
 
+  function factionUpgradeDescription(faction) {
+    if (faction === "rainbow") return "Rainbow units gain stronger shields and faster shield recovery.";
+    if (faction === "mech") return "Mech units and buildings gain extra plating, and workers repair more efficiently.";
+    return "Fire units move faster and living buildings keep healing themselves.";
+  }
+
   function applyFactionUpgrade() {
     [...state.units, ...state.structures].filter((entity) => entity.owner === "player").forEach(applyFactionUpgradeToEntity);
   }
 
   function applyFactionUpgradeToEntity(entity) {
     if (state.player.faction === "rainbow" && entity.kind === "unit") {
-      entity.maxHp += 16;
-      entity.hp += 16;
+      const shieldBonus = entity.type === "worker" ? 8 : entity.type === "elite" || entity.type === "extraHeavy" ? 24 : 14;
+      entity.maxShield = (entity.maxShield || 0) + shieldBonus;
+      entity.shield = Math.min(entity.maxShield, (entity.shield || 0) + shieldBonus);
     } else if (state.player.faction === "mech") {
       const bonus = entity.kind === "structure" ? 35 : 12;
       entity.maxHp += bonus;
@@ -2790,9 +2934,17 @@
     say(formationMode[0].toUpperCase() + formationMode.slice(1) + " formation selected.");
   }
 
-  function issuePing(wx, wy, owner = "player") {
+  function issuePing(wx, wy, owner = "player", labelOverride = "") {
+    const mode = String(commandMode || "");
+    const label = labelOverride ? String(labelOverride).toUpperCase() : mode.startsWith("ping:") ? mode.slice(5).toUpperCase() : owner === "player" ? "PING" : "ALLY";
+    const colorByLabel = {
+      ATTACK: "#ff705d",
+      DEFEND: "#83e79a",
+      HELP: "#fff47a",
+      BUILD: "#8dd5ef"
+    };
     const color = ownersAreAllied("player", owner) ? "#7cff9a" : "#ff705d";
-    state.effects.push({ x: wx, y: wy, r: 12, life: 2.4, color, kind: "ping", label: owner === "player" ? "PING" : "ALLY" });
+    state.effects.push({ x: wx, y: wy, r: 12, life: 3.1, color: colorByLabel[label] || color, kind: "ping", label });
     playEffectTone(760, 0.16, 0.05);
   }
 
@@ -2892,7 +3044,7 @@
     } else if (command.action === "heroAbility") {
       castHeroAbility(owner, command.unitIds || []);
     } else if (command.action === "ping") {
-      issuePing(Number(command.x), Number(command.y), owner);
+      issuePing(Number(command.x), Number(command.y), owner, command.label);
     }
   }
 
@@ -2939,6 +3091,44 @@
       if (Math.random() < 0.02) {
         state.effects.push({ x: structure.x, y: structure.y - stats[structure.type].radius * 0.35, r: 4, life: 0.35, color: "#fff2cd", kind: "spark" });
       }
+    });
+  }
+
+  function updateMapObjectives(dt) {
+    state.objectives.forEach((objective) => {
+      objective.pulse += dt * 2;
+      const alliedNearby = state.units.some((unit) => ownersAreAllied("player", unit.owner) && !unit.garrisonedIn && Math.hypot(unit.x - objective.x, unit.y - objective.y) < objective.radius);
+      const enemyNearby = state.units.some((unit) => isHostileTo("player", unit, localPlayerIndex()) && !unit.garrisonedIn && Math.hypot(unit.x - objective.x, unit.y - objective.y) < objective.radius);
+      const previous = objective.owner;
+      if (alliedNearby && !enemyNearby) objective.capture = Math.min(1, objective.capture + dt * 0.18);
+      else if (enemyNearby && !alliedNearby) objective.capture = Math.max(-1, objective.capture - dt * 0.18);
+      else if (!alliedNearby && !enemyNearby) objective.capture *= Math.max(0, 1 - dt * 0.08);
+      objective.owner = objective.capture > 0.95 ? "player" : objective.capture < -0.95 ? "enemy" : "neutral";
+      if (objective.owner !== previous && objective.owner !== "neutral") {
+        const friendly = objective.owner === "player";
+        recordTimeline(friendly ? "Objective captured" : "Objective lost", objective.name + (friendly ? " now helps your flock." : " was taken by rivals."));
+        if (friendly) {
+          say(objective.name + " captured.");
+          playEffectTone(objective.type === "income" ? 760 : 620, 0.16, 0.045);
+        }
+      }
+      if (objective.owner === "player" && objective.type === "income") {
+        state.player.marshmallows += dt * 1.4;
+        state.stats.marshmallowsGathered += dt * 1.4;
+      }
+      if (objective.owner === "enemy" && objective.type === "income") {
+        state.enemy.marshmallows += dt * 1.0;
+      }
+    });
+  }
+
+  function updateRainbowShields(dt) {
+    state.units.forEach((unit) => {
+      if (!unit.maxShield || unit.hp <= 0) return;
+      unit.shieldDelay = Math.max(0, (unit.shieldDelay || 0) - dt);
+      if (unit.shieldDelay > 0 || unit.shield >= unit.maxShield) return;
+      const regenRate = (unit.type === "worker" ? 3.5 : unit.type === "elite" || unit.type === "extraHeavy" ? 7 : 5) * (upgrades.factionTech.researched && unit.owner === "player" && state.player.faction === "rainbow" ? 1.45 : 1);
+      unit.shield = Math.min(unit.maxShield, (unit.shield || 0) + regenRate * dt);
     });
   }
 
@@ -3033,6 +3223,7 @@
     }
     if (isNetworkGuest) {
       sendNetworkCommand({ action: "command", unitIds: units.map((u) => u.id), x: wx, y: wy });
+      applyUnitCommand("player", units.map((u) => u.id), wx, wy);
       state.effects.push({ x: wx, y: wy, r: 6, life: 0.8, color: "#9cffb7", kind: "move" });
       say("Move order issued.");
       return;
@@ -3126,6 +3317,7 @@
     }
     if (isNetworkGuest) {
       sendNetworkCommand({ action: "attackMove", unitIds: units.map((u) => u.id), x: wx, y: wy });
+      applyAttackMove("player", units.map((u) => u.id), wx, wy);
       state.effects.push({ x: wx, y: wy, r: 8, life: 1.1, color: "#ffef7a", kind: "attack" });
       commandMode = null;
       recordMilestone("firstAttackMove", "Attack-move issued", units.length + " unit" + (units.length === 1 ? "" : "s") + " pushed across the map.");
@@ -3156,7 +3348,7 @@
     const ids = selectedUnitIds();
     if (!ids.length) return say("Select units first.");
     if (isNetworkGuest) sendNetworkCommand({ action: "stop", unitIds: ids });
-    else applyStop("player", ids);
+    applyStop("player", ids);
     say("Units stopped.");
   }
 
@@ -3165,7 +3357,7 @@
     const ids = selectedUnitIds();
     if (!ids.length) return say("Select units first.");
     if (isNetworkGuest) sendNetworkCommand({ action: "hold", unitIds: ids });
-    else applyHold("player", ids);
+    applyHold("player", ids);
     say("Holding position.");
   }
 
@@ -3177,7 +3369,7 @@
       return;
     }
     if (isNetworkGuest) sendNetworkCommand({ action: "patrol", unitIds: ids, x: wx, y: wy });
-    else applyPatrol("player", ids, wx, wy);
+    applyPatrol("player", ids, wx, wy);
     state.effects.push({ x: wx, y: wy, r: 8, life: 1, color: "#83e79a", kind: "move" });
     commandMode = null;
     say("Patrol route set.");
@@ -3556,19 +3748,24 @@
       updateUi();
       return;
     }
+    if (paused) {
+      updateEffects();
+      updateUi();
+      return;
+    }
     state.elapsed += dt;
     messageTimer -= dt;
     if (messageTimer <= 0) toast.textContent = "Gather Marshmallows, scout, and destroy the enemy main base.";
 
     network.tick += dt;
-    if (network.enabled && roomSettings.matchType === "ffa") {
+    if (network.enabled && !network.liveConnected && roomSettings.matchType === "ffa") {
       network.lastRoomPoll += dt;
       if (network.lastRoomPoll > networkRates.roomPoll) {
         network.lastRoomPoll = 0;
         refreshOnlineRoom();
       }
     }
-    if (network.enabled) {
+    if (network.enabled && !network.liveConnected) {
       network.lastChatPoll += dt;
       if (network.lastChatPoll > 1.5) {
         network.lastChatPoll = 0;
@@ -3577,10 +3774,11 @@
     }
     if (isNetworkGuest || isNetworkSpectator) {
       network.lastSnapshotPoll += dt;
-      if (network.lastSnapshotPoll > networkRates.guestSnapshot) {
+      if (!network.liveConnected && network.lastSnapshotPoll > networkRates.guestSnapshot) {
         network.lastSnapshotPoll = 0;
         pollNetworkSnapshot();
       }
+      if (isNetworkGuest) updateGuestPrediction(dt);
       updateEffects();
       updateUi();
       return;
@@ -3593,7 +3791,7 @@
     if (isNetworkHost) {
       network.lastCommandPoll += dt;
       network.lastSnapshotPoll += dt;
-      if (network.lastCommandPoll > networkRates.commandPoll) {
+      if (!network.liveConnected && network.lastCommandPoll > networkRates.commandPoll) {
         network.lastCommandPoll = 0;
         pollNetworkCommands();
       }
@@ -3606,7 +3804,7 @@
     if ((!network.enabled || isNetworkHost && hasComputerEnemy()) && !tutorialMode && aiTimer > aiProfile.think) {
       aiTimer = 0;
       enemyThink("enemy");
-      if (network.enabled) enemyThink("ally");
+      if (alliedSideIsAiOnly()) enemyThink("ally");
     }
 
     if (!network.enabled && !tutorialMode) state.enemy.marshmallows += dt * aiProfile.drip;
@@ -3616,7 +3814,9 @@
     updateConstructions(dt);
     updateExtractors(dt);
     updateUpgrades(dt);
+    updateMapObjectives(dt);
     updateFireSelfRepair(dt);
+    updateRainbowShields(dt);
     updateHitFlashes(dt);
     fight(dt);
     cleanup();
@@ -3624,6 +3824,19 @@
     updateStoryEvents();
     updateTutorial();
     updateUi();
+  }
+
+  function updateGuestPrediction(dt) {
+    updateTraining(dt);
+    state.units
+      .filter((unit) => unit.owner === "player" && !unit.garrisonedIn)
+      .forEach((unit) => updateUnit(unit, dt));
+    updateConstructions(dt);
+    updateExtractors(dt);
+    updateUpgrades(dt);
+    updateMapObjectives(dt);
+    updateRainbowShields(dt);
+    updateHitFlashes(dt);
   }
 
   function updateUnit(unit, dt) {
@@ -3682,8 +3895,9 @@
         unit.ty = stop.y;
         if (dist(unit, target) < footprintRadius(target.type) + stats.worker.radius + 34) {
           const side = sideFor(unit.owner);
-          const repairRate = 30;
-          const costRate = 0.22;
+          const mechRepairBoost = upgrades.factionTech.researched && sideFor(unit.owner).faction === "mech" ? 1.35 : 1;
+          const repairRate = 30 * mechRepairBoost;
+          const costRate = 0.22 / mechRepairBoost;
           const affordable = Math.min(repairRate * dt, side.marshmallows / costRate, target.maxHp - target.hp);
           if (affordable <= 0) {
             if (unit.owner === "player") say("Need Marshmallows to repair.");
@@ -3858,9 +4072,33 @@
   }
 
   function applyDamage(target, amount, color = "#fff7be", showNumber = true) {
-    const dealt = Math.max(0, Math.round(damageAfterArmor(amount, target)));
+    let dealt = Math.max(0, Math.round(damageAfterArmor(amount, target)));
+    if (target.maxShield && target.shield > 0) {
+      const shieldHit = Math.min(target.shield, dealt);
+      target.shield -= shieldHit;
+      target.shieldDelay = 3.2;
+      dealt -= shieldHit;
+      if (showNumber && shieldHit > 0) {
+        state.effects.push({
+          kind: "damageText",
+          x: target.x + (Math.random() - 0.5) * 18,
+          y: target.y - stats[target.type].radius - 20,
+          value: shieldHit,
+          life: 1,
+          color: "#55b8ff"
+        });
+      }
+    }
     target.hp -= dealt;
     target.hitFlash = Math.max(target.hitFlash || 0, 0.16);
+    if (dealt > 0 && ownersAreAllied("player", target.owner) && state.elapsed - state.lastAttackAlert > 4) {
+      state.lastAttackAlert = state.elapsed;
+      state.lastAlertTarget = { x: target.x, y: target.y, at: state.elapsed };
+      state.effects.push({ kind: "ping", x: target.x, y: target.y, r: 10, life: 3.2, color: "#ff705d", label: "ATTACK" });
+      if (!isNetworkGuest && !isNetworkSpectator) playEffectTone(190, 0.22, 0.055);
+      say("Your flock is under attack.");
+      recordTimeline("Under attack", (target.kind === "structure" ? "A building" : "A unit") + " took damage.");
+    }
     if (showNumber && dealt > 0) {
       state.effects.push({
         kind: "damageText",
@@ -4064,6 +4302,9 @@
     ui.scoreSummary.textContent = result === "victory"
       ? "You destroyed the enemy main base and claimed the meadow."
       : "Your main base was destroyed. The meadow is lost.";
+    if (!storyMode) {
+      ui.scoreSummary.textContent += " " + factionResultLine(state.player.faction, result);
+    }
     if (storyMode) {
       ui.scoreTitle.textContent = result === "victory" ? "Rainbow Meadow Saved" : "The Wolves Won";
       ui.scoreSummary.textContent = result === "victory"
@@ -4156,6 +4397,17 @@
       ui.scoreRematch.textContent = "Play Again";
     }
     ui.scoreScreen.hidden = false;
+  }
+
+  function factionResultLine(faction, result) {
+    if (result === "victory") {
+      if (faction === "rainbow") return "Derek says: the dream held bright.";
+      if (faction === "mech") return "Ada says: excellent engineering, flock commander.";
+      if (faction === "fire") return "Ember says: warm wool wins together.";
+    }
+    if (faction === "rainbow") return "Derek says: regroup under the next rainbow.";
+    if (faction === "mech") return "Ada says: rebuild the gears and try again.";
+    return "Ember says: every ember can rise again.";
   }
 
   function makeTutorialRoomCode() {
@@ -4300,13 +4552,16 @@
 
     const playerCrossedMap = state.units.some((u) => isHostileTo(owner, u, base.playerIndex) && Math.hypot(u.x - base.x, u.y - base.y) < 520);
     const defenseTarget = owner === "ally" ? urgentThreatNearAllies() : null;
+    const objectiveTarget = !defenseTarget && enemyArmy.length >= 3
+      ? state.objectives.find((objective) => objective.owner !== ownerForObjective(owner) && Math.hypot(objective.x - base.x, objective.y - base.y) < 980)
+      : null;
     const waveReady = state.elapsed > aiProfile.waveDelay && attackWaveTimer > aiProfile.waveCooldown && enemyArmy.length >= 4;
-    if (!defenseTarget && !playerCrossedMap && !waveReady) {
+    if (!defenseTarget && !objectiveTarget && !playerCrossedMap && !waveReady) {
       return;
     }
 
     attackWaveTimer = 0;
-    const destination = defenseTarget || targetBase;
+    const destination = defenseTarget || (waveReady || playerCrossedMap ? targetBase : objectiveTarget) || targetBase;
     enemyArmy.slice(0, aiProfile.waveSize).forEach((u, index) => {
       const offset = formationOffset(index, Math.min(aiProfile.waveSize, enemyArmy.length));
       u.target = null;
@@ -4318,6 +4573,11 @@
       u.ty = u.attackY;
     });
     if (owner === "enemy") say("Enemy attack-move wave spotted. Rally the flock.");
+  }
+
+  function ownerForObjective(owner) {
+    if (ownersAreAllied("player", owner)) return "player";
+    return owner === "enemy" ? "enemy" : "neutral";
   }
 
   function nearestHostileBase(owner, from) {
@@ -4361,7 +4621,10 @@
   function visibleToPlayer(e) {
     if (ownersAreAllied("player", e.owner)) return true;
     const scouts = [...state.units, ...state.structures].filter((x) => ownersAreAllied("player", x.owner));
-    return scouts.some((s) => Math.hypot(s.x - e.x, s.y - e.y) < (stats[s.type].vision || 330));
+    state.objectives
+      .filter((objective) => objective.owner === "player" && objective.type === "watch")
+      .forEach((objective) => scouts.push({ x: objective.x, y: objective.y, type: "objectiveWatch" }));
+    return scouts.some((s) => Math.hypot(s.x - e.x, s.y - e.y) < ((stats[s.type] && stats[s.type].vision) || 460));
   }
 
   function draw() {
@@ -4371,6 +4634,7 @@
     drawTerrain();
     drawWarmWool();
     drawFog();
+    drawObjectives();
     state.resources.forEach(drawResource);
     state.structures.forEach((s) => {
       if (visibleToPlayer(s)) drawEntity(s);
@@ -4485,6 +4749,53 @@
     ctx.restore();
   }
 
+  function drawObjectives() {
+    state.objectives.forEach((objective) => {
+      if (objective.owner === "enemy" && !visibleToPlayer(objective)) return;
+      const friendly = objective.owner === "player";
+      const enemy = objective.owner === "enemy";
+      const color = friendly ? "#7cff9a" : enemy ? "#ff705d" : "#fff47a";
+      const progress = Math.abs(objective.capture);
+      ctx.save();
+      ctx.translate(objective.x, objective.y);
+      ctx.globalAlpha = enemy && !visibleToPlayer(objective) ? 0.35 : 1;
+      ctx.fillStyle = friendly ? "rgba(124,255,154,0.15)" : enemy ? "rgba(255,112,93,0.15)" : "rgba(255,244,122,0.12)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.setLineDash([12, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, objective.radius + Math.sin(objective.pulse) * 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(20,36,30,0.78)";
+      ctx.beginPath();
+      ctx.roundRect(-58, -26, 116, 52, 8);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.font = "700 16px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(objective.type === "income" ? "Candy" : "Watch", 0, -3);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(-44, 12, 88, 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(-44, 12, 88 * progress, 6);
+      ctx.restore();
+    });
+  }
+
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      const radius = Math.min(r || 0, Math.abs(w) / 2, Math.abs(h) / 2);
+      this.moveTo(x + radius, y);
+      this.arcTo(x + w, y, x + w, y + h, radius);
+      this.arcTo(x + w, y + h, x, y + h, radius);
+      this.arcTo(x, y + h, x, y, radius);
+      this.arcTo(x, y, x + w, y, radius);
+      return this;
+    };
+  }
+
   function drawResource(r) {
     if (r.amount <= 0 || r.coveredBy) return;
     ctx.save();
@@ -4520,9 +4831,9 @@
     ctx.translate(e.x, e.y);
     if (selected.has(e.id)) {
       ctx.strokeStyle = ownerColor(e.owner);
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.ellipse(0, 8, s.radius + 10, (s.radius + 10) * 0.56, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 8, s.radius + 5, (s.radius + 5) * 0.5, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.fillStyle = "rgba(0,0,0,0.22)";
@@ -4575,9 +4886,9 @@
       }
     }
     ctx.strokeStyle = e.owner ? ownerColor(e.owner) : f.color;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(0, -4, s.radius + 8, 0, Math.PI * 2);
+    ctx.arc(0, -4, s.radius + 3, 0, Math.PI * 2);
     ctx.stroke();
     if (e.carry > 0) {
       ctx.fillStyle = "#ff8ba5";
@@ -4685,9 +4996,9 @@
       }
     }
     ctx.strokeStyle = e.owner ? ownerColor(e.owner) : "rgba(255, 255, 255, 0.8)";
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.ellipse(0, 6, s.radius * 1.2, s.radius * 0.76, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 6, s.radius * 0.95, s.radius * 0.6, 0, 0, Math.PI * 2);
     ctx.stroke();
     if (e.type === "defenseTower") {
       ctx.fillStyle = e.garrisonedWorkerId ? f.accent : "rgba(255, 247, 232, 0.72)";
@@ -4825,6 +5136,13 @@
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2, 5);
     ctx.fillStyle = ownerColor(e.owner);
     ctx.fillRect(-s.radius, -s.radius - 22, s.radius * 2 * pct, 5);
+    if (e.maxShield) {
+      const shieldPct = Math.max(0, Math.min(1, (e.shield || 0) / e.maxShield));
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      ctx.fillRect(-s.radius, -s.radius - 16, s.radius * 2, 3);
+      ctx.fillStyle = "#55b8ff";
+      ctx.fillRect(-s.radius, -s.radius - 16, s.radius * 2 * shieldPct, 3);
+    }
   }
 
   function drawProgressBar(value, max, radius, color) {
@@ -5016,8 +5334,12 @@
     fctx.fillStyle = "rgba(5,12,10,0.64)";
     fctx.fillRect(0, 0, camera.w, camera.h);
     fctx.globalCompositeOperation = "destination-out";
-    [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => ownersAreAllied("player", e.owner)).forEach((e) => {
-      const r = e.type === "base" ? 520 : 330;
+    const revealers = [...state.units.filter((u) => !u.garrisonedIn), ...state.structures].filter((e) => ownersAreAllied("player", e.owner));
+    state.objectives
+      .filter((objective) => objective.owner === "player" && objective.type === "watch")
+      .forEach((objective) => revealers.push({ x: objective.x, y: objective.y, type: "objectiveWatch" }));
+    revealers.forEach((e) => {
+      const r = e.type === "base" ? 520 : e.type === "objectiveWatch" ? 500 : 330;
       fctx.beginPath();
       fctx.arc(e.x - camera.x, e.y - camera.y, r, 0, Math.PI * 2);
       fctx.fillStyle = "rgba(0,0,0,0.92)";
@@ -5054,6 +5376,13 @@
       mctx.fillStyle = r.type === "lollipop" ? "#ff8ba5" : "#fff";
       mctx.fillRect(r.x * sx - 2, r.y * sy - 2, 4, 4);
     });
+    state.objectives.forEach((objective) => {
+      mctx.strokeStyle = objective.owner === "player" ? "#7cff9a" : objective.owner === "enemy" ? "#ff705d" : "#fff47a";
+      mctx.lineWidth = 2;
+      mctx.beginPath();
+      mctx.arc(objective.x * sx, objective.y * sy, 5, 0, Math.PI * 2);
+      mctx.stroke();
+    });
     state.training.forEach((job) => {
       const producer = state.structures.find((s) => s.id === job.producerId);
       if (!producer || !visibleToPlayer(producer)) return;
@@ -5087,6 +5416,12 @@
     ui.lollipops.textContent = Math.floor(state.player.lollipops);
     ui.marshmallows.textContent = Math.floor(state.player.marshmallows);
     ui.wool.textContent = state.player.woolUsed + " / " + state.player.woolMax;
+    if (ui.matchTimer) ui.matchTimer.textContent = formatTime(state.elapsed);
+    if (ui.pauseToggle) {
+      ui.pauseToggle.hidden = network.enabled;
+      ui.pauseToggle.textContent = paused ? "Resume" : "Pause";
+      ui.pauseToggle.setAttribute("aria-pressed", String(paused));
+    }
     const workers = state.units.filter((u) => u.owner === "player" && u.type === "worker");
     const idleWorkers = idleWorkerList();
     ui.workerCount.textContent = workers.length;
@@ -5114,6 +5449,11 @@
       ui.stop.disabled = false;
       ui.hold.disabled = false;
       ui.patrol.disabled = false;
+      ui.formation.disabled = false;
+      ui.ping.disabled = false;
+      ui.attackPing.disabled = false;
+      ui.defendPing.disabled = false;
+      ui.helpPing.disabled = false;
       ui.base.disabled = false;
       ui.supply.disabled = false;
       ui.production.disabled = false;
@@ -5155,6 +5495,9 @@
       ui.patrol.disabled = false;
       ui.formation.disabled = false;
       ui.ping.disabled = false;
+      ui.attackPing.disabled = false;
+      ui.defendPing.disabled = false;
+      ui.helpPing.disabled = false;
       if (first.heroName) ui.heroAbility.disabled = first.heroAbilityCooldown > 0;
     }
     ui.title.textContent = picked.length === 1 ? label : picked.length + " selected";
@@ -5183,13 +5526,13 @@
     } else if (first.kind === "structure" && first.type === "forge") {
       ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else if (first.heroName) {
-      ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + " Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
+      ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + unitCounterText(first.type) + " Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
       ui.copy.textContent = forgeQueue || (producerQueue
         ? "Training: " + Math.ceil(Math.max(0, producerQueue.duration - producerQueue.elapsed)) + " seconds remaining."
-        : picked.length === 1 ? f.name + " " + label + ". " + combatRoleText(first) + "Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
+        : picked.length === 1 ? f.name + " " + label + ". " + combatRoleText(first) + unitCounterText(first.type) + " Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
     }
   }
 
@@ -5253,6 +5596,7 @@
     if (upgrades.eliteArmor.inProgress) return "Researching Elite Armor: " + Math.ceil(upgrades.eliteArmor.duration - upgrades.eliteArmor.elapsed) + " seconds remaining.";
     if (upgrades.factionTech.inProgress) return "Researching " + factionUpgradeName(state.player.faction) + ": " + Math.ceil(upgrades.factionTech.duration - upgrades.factionTech.elapsed) + " seconds remaining.";
     if (upgrades.armor.researched && upgrades.eliteArmor.researched && upgrades.factionTech.researched) return "All upgrades complete.";
+    if (!upgrades.factionTech.researched) return factionUpgradeName(state.player.faction) + ": " + factionUpgradeDescription(state.player.faction);
     return "";
   }
 
@@ -5305,11 +5649,12 @@
       issueRally(p.wx, p.wy);
       return;
     }
-    if (event.button === 0 && commandMode === "ping") {
-      issuePing(p.wx, p.wy);
-      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy });
+    if (event.button === 0 && String(commandMode || "").startsWith("ping")) {
+      const label = String(commandMode || "").startsWith("ping:") ? String(commandMode).slice(5) : "ping";
+      issuePing(p.wx, p.wy, "player", label);
+      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy, label });
       commandMode = null;
-      say("Map ping sent.");
+      say(label[0].toUpperCase() + label.slice(1) + " ping sent.");
       return;
     }
     mouse.down = true;
@@ -5363,8 +5708,14 @@
 
   mini.addEventListener("click", (event) => {
     const rect = mini.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * world.w;
-    const y = ((event.clientY - rect.top) / rect.height) * world.h;
+    let x = ((event.clientX - rect.left) / rect.width) * world.w;
+    let y = ((event.clientY - rect.top) / rect.height) * world.h;
+    if (state.lastAlertTarget && state.elapsed - state.lastAlertTarget.at < 8 && state.elapsed - state.lastAlertClicked > 1) {
+      x = state.lastAlertTarget.x;
+      y = state.lastAlertTarget.y;
+      state.lastAlertClicked = state.elapsed;
+      say("Jumped to the attack alert.");
+    }
     camera.x = Math.max(0, Math.min(world.w - camera.w, x - camera.w / 2));
     camera.y = Math.max(0, Math.min(world.h - camera.h, y - camera.h / 2));
   });
@@ -5460,10 +5811,12 @@
     if (commandMode === "move") return issueCommand(p.wx, p.wy);
     if (commandMode === "attack") return issueAttackMove(p.wx, p.wy);
     if (commandMode === "patrol") return issuePatrol(p.wx, p.wy);
-    if (commandMode === "ping") {
-      issuePing(p.wx, p.wy);
-      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy });
+    if (String(commandMode || "").startsWith("ping")) {
+      const label = String(commandMode || "").startsWith("ping:") ? String(commandMode).slice(5) : "ping";
+      issuePing(p.wx, p.wy, "player", label);
+      if (network.enabled) sendNetworkCommand({ action: "ping", x: p.wx, y: p.wy, label });
       commandMode = null;
+      say(label[0].toUpperCase() + label.slice(1) + " ping sent.");
       return;
     }
     selected.clear();
@@ -5535,8 +5888,7 @@
     }
     if ((event.key === "w" || event.key === "W") && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
-      if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "worker" });
-      else queueTraining("worker");
+      issueTrain("worker");
       return;
     }
     if ((event.key === "b" || event.key === "B") && !event.ctrlKey && !event.metaKey) {
@@ -5559,44 +5911,37 @@
   ui.worker.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "worker" });
-    else queueTraining("worker");
+    issueTrain("worker");
   });
   ui.soldier.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "soldier" });
-    else queueTraining("soldier");
+    issueTrain("soldier");
   });
   ui.heavy.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "heavy" });
-    else queueTraining("heavy");
+    issueTrain("heavy");
   });
   ui.elite.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "elite" });
-    else queueTraining("elite");
+    issueTrain("elite");
   });
   ui.support.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "support" });
-    else queueTraining("support");
+    issueTrain("support");
   });
   ui.flyer.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "flyer" });
-    else queueTraining("flyer");
+    issueTrain("flyer");
   });
   ui.extraHeavy.addEventListener("click", () => {
     startMatchMusic();
     if (!canIssueOrders()) return;
-    if (isNetworkGuest) sendNetworkCommand({ action: "train", type: "extraHeavy" });
-    else queueTraining("extraHeavy");
+    issueTrain("extraHeavy");
   });
   ui.move.addEventListener("click", () => {
     startMatchMusic();
@@ -5632,6 +5977,15 @@
     commandMode = "ping";
     say("Map ping: click a location for your team.");
   });
+  function beginTypedPing(label) {
+    startMatchMusic();
+    if (!canIssueOrders()) return;
+    commandMode = "ping:" + label;
+    say(label[0].toUpperCase() + label.slice(1) + " ping: click a location for your team.");
+  }
+  ui.attackPing.addEventListener("click", () => beginTypedPing("attack"));
+  ui.defendPing.addEventListener("click", () => beginTypedPing("defend"));
+  ui.helpPing.addEventListener("click", () => beginTypedPing("help"));
   if (ui.mobileIdle) {
     ui.mobileIdle.addEventListener("click", () => {
       startMatchMusic();
@@ -5767,6 +6121,14 @@
       sendGameChat(text);
     });
   }
+  if (ui.pauseToggle) {
+    ui.pauseToggle.addEventListener("click", () => {
+      if (network.enabled) return;
+      paused = !paused;
+      say(paused ? "Game paused." : "Game resumed.");
+      updateUi();
+    });
+  }
   ui.musicToggle.addEventListener("click", async () => {
     if (ui.music.paused) {
       musicEnabled = true;
@@ -5862,9 +6224,16 @@
   }
 
   window.addEventListener("resize", fitCanvas);
+  window.addEventListener("beforeunload", (event) => {
+    if (!state.ended && state.elapsed > 8) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
   window.addEventListener("keydown", startMatchMusic, { once: true });
   fitCanvas();
   refreshOnlineRoom().finally(() => {
+    connectLiveRoomStream();
     setup();
     renderAlliancePanel();
     requestAnimationFrame(loop);

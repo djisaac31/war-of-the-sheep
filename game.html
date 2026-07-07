@@ -18,7 +18,9 @@
           <span class="resource resource--wool"><b id="wool">3 / 12</b> Wool</span>
           <span class="resource resource--workers"><b id="worker-count">3</b> Workers</span>
           <span class="resource resource--idle"><b id="idle-workers">0</b> Idle</span>
+          <span class="resource resource--time"><b id="match-timer">0:00</b> Time</span>
         </div>
+        <button class="music-button" id="pause-toggle" type="button" hidden>Pause</button>
         <button class="music-button" id="idle-worker-button" type="button">Idle Worker</button>
         <button class="music-button" id="music-toggle" type="button" aria-pressed="false">Music Off</button>
         <button class="music-button" id="chat-toggle" type="button" aria-expanded="false">Chat</button>
@@ -81,6 +83,9 @@
             <button id="unit-patrol" data-command-button="unit" type="button">Patrol</button>
             <button id="unit-formation" data-command-button="unit" type="button">Formation<br>Box</button>
             <button id="map-ping" data-command-button="unit" type="button">Map<br>Ping</button>
+            <button id="attack-ping" data-command-button="unit" type="button">Attack<br>Ping</button>
+            <button id="defend-ping" data-command-button="unit" type="button">Defend<br>Ping</button>
+            <button id="help-ping" data-command-button="unit" type="button">Help<br>Ping</button>
             <span class="command-group" data-command-group="hero">Hero</span>
             <button id="hero-ability" data-command-button="hero" type="button">Hero<br>Power</button>
             <span class="command-group" data-command-group="basic-build">Basic Builds</span>
@@ -110,6 +115,7 @@
             <button id="upgrade-faction-tech" data-command-button="forge" type="button">Faction<br>Upgrade</button>
           </div>
           <div class="command-tooltip" id="command-tooltip" hidden></div>
+          <div class="win-condition" id="win-condition">Win: destroy all enemy Main Bases. Lose: all allied Main Bases fall.</div>
           <section class="game-chat" id="game-chat" aria-label="Team chat" hidden>
             <div id="game-chat-log" class="game-chat__log">
               <span>No messages yet.</span>

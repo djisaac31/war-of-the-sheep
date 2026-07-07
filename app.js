@@ -60,6 +60,8 @@
   let serverAccounts = false;
   let googleOAuthReady = false;
   let lobbyPoll = null;
+  let lobbyStream = null;
+  let lobbyStreamOpen = false;
   let accountMode = "login";
   const ACCOUNTS_KEY = "magic-sheep-accounts";
   const CURRENT_PROFILE_KEY = "magic-sheep-current-profile";
@@ -261,6 +263,8 @@
       const timeline = document.createElement("div");
       const actions = document.createElement("div");
       const inspect = document.createElement("button");
+      const review = document.createElement("button");
+      const exportReplay = document.createElement("button");
       const remove = document.createElement("button");
       card.className = "replay-card";
       head.className = "replay-card__head";
@@ -269,7 +273,7 @@
       actions.className = "replay-card__actions";
       title.textContent = (record.result === "victory" ? "Victory" : "Defeat") + " - " + (record.faction || "Magic Sheep");
       meta.textContent = formatReplayTime(record.time) + " | " + (record.difficulty || "normal").toUpperCase() + " | " + (record.enemiesDestroyed || 0) + " enemies destroyed";
-      (record.timeline || []).slice(-4).forEach(function (event) {
+      (record.timeline || []).slice(-12).forEach(function (event) {
         const row = document.createElement("span");
         row.textContent = formatReplayTime(event.time) + " - " + event.title;
         timeline.append(row);
@@ -280,6 +284,25 @@
         timeline.classList.toggle("is-open");
         inspect.textContent = timeline.classList.contains("is-open") ? "Close Timeline" : "Open Timeline";
       });
+      review.type = "button";
+      review.textContent = "Review";
+      review.addEventListener("click", function () {
+        localStorage.setItem("magic-sheep-last-match", JSON.stringify(record));
+        status.textContent = "Replay review loaded. Open Timeline shows the match events.";
+        timeline.classList.add("is-open");
+        inspect.textContent = "Close Timeline";
+      });
+      exportReplay.type = "button";
+      exportReplay.textContent = "Export";
+      exportReplay.addEventListener("click", async function () {
+        const text = JSON.stringify(record, null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          status.textContent = "Replay data copied.";
+        } catch (_error) {
+          status.textContent = "Replay export ready: " + text.slice(0, 80) + "...";
+        }
+      });
       remove.type = "button";
       remove.textContent = "Delete";
       remove.addEventListener("click", function () {
@@ -288,7 +311,7 @@
         localStorage.setItem(activeReplayKey(), JSON.stringify(all));
         renderReplays();
       });
-      actions.append(inspect, remove);
+      actions.append(inspect, review, exportReplay, remove);
       head.append(title, meta);
       card.append(head, timeline, actions);
       replayList.append(card);
@@ -568,7 +591,17 @@
       return;
     }
     const expansions = Math.max(2, map.players + 2);
-    mapPreview.textContent = map.name + ": " + map.players + " player starts, about " + expansions + " expansion fields, and room for " + matchLabel(matchType.value) + ".";
+    mapPreview.innerHTML = "";
+    const mini = document.createElement("span");
+    const copy = document.createElement("span");
+    mini.className = "map-preview__mini";
+    Array.from({ length: Math.min(map.players, 6) }).forEach(function (_item, index) {
+      const dot = document.createElement("i");
+      dot.style.transform = "rotate(" + (index * (360 / Math.max(map.players, 1))) + "deg) translateX(34px)";
+      mini.append(dot);
+    });
+    copy.textContent = map.name + ": " + map.players + " player starts, about " + expansions + " expansion fields, and room for " + matchLabel(matchType.value) + ".";
+    mapPreview.append(mini, copy);
   }
 
   function slotTeam(type, index) {
@@ -631,12 +664,15 @@
   }
 
   async function updateRoomSlot(action, body, localUpdate) {
-    if (!activeRoom) return;
+    if (!activeRoom) return false;
     const session = readSession(activeRoom.code);
-    if (!serverOnline) {
+    const rollback = JSON.parse(JSON.stringify(activeRoom));
+    if (typeof localUpdate === "function") {
       localUpdate();
       saveRoom(activeRoom);
       renderRoom(activeRoom);
+    }
+    if (!serverOnline) {
       return true;
     }
     try {
@@ -661,7 +697,8 @@
         saveRoom(error.data.room);
         renderRoom(error.data.room);
       } else {
-        renderRoom(activeRoom);
+        saveRoom(rollback);
+        renderRoom(rollback);
       }
       status.textContent = error.message;
       return false;
@@ -892,10 +929,49 @@
     return error && error.message ? error.message : "Waiting for the room server.";
   }
 
+  function connectLobbyStream(code) {
+    if (!serverOnline || !code || typeof EventSource === "undefined") return;
+    if (lobbyStream) lobbyStream.close();
+    lobbyStreamOpen = false;
+    const session = readSession(code);
+    const url = "/api/rooms/" + encodeURIComponent(code) + "/events" + (session && session.playerId ? "?playerId=" + encodeURIComponent(session.playerId) : "");
+    lobbyStream = new EventSource(url);
+    lobbyStream.onopen = function () {
+      lobbyStreamOpen = true;
+    };
+    lobbyStream.onerror = function () {
+      lobbyStreamOpen = false;
+    };
+    lobbyStream.addEventListener("room", function (event) {
+      const data = JSON.parse(event.data || "{}");
+      if (!data.room) return;
+      saveRoom(data.room);
+      renderRoom(data.room);
+      const currentSession = readSession(code);
+      if (data.room.started && currentSession) launchRoom(code);
+    });
+    lobbyStream.addEventListener("chat", function (event) {
+      const data = JSON.parse(event.data || "{}");
+      if (!data.room) return;
+      saveRoom(data.room);
+      renderRoom(data.room);
+    });
+    lobbyStream.addEventListener("closed", function () {
+      lobbyStreamOpen = false;
+      if (lobbyStream) lobbyStream.close();
+      lobbyStream = null;
+      deleteRoom(code);
+      renderRoom(null);
+      status.textContent = "The host closed the room.";
+    });
+  }
+
   function startLobbyPolling(code) {
     if (lobbyPoll) clearInterval(lobbyPoll);
     if (!serverOnline || !code) return;
+    connectLobbyStream(code);
     lobbyPoll = setInterval(async function () {
+      if (lobbyStreamOpen) return;
       try {
         const data = await api("/api/rooms/" + encodeURIComponent(code));
         if (!data.room) return;
@@ -922,12 +998,21 @@
       helper.value = text;
       helper.setAttribute("readonly", "");
       helper.style.position = "fixed";
-      helper.style.left = "-9999px";
+      helper.style.top = "0";
+      helper.style.left = "0";
+      helper.style.opacity = "0";
       document.body.append(helper);
+      helper.focus();
       helper.select();
+      helper.setSelectionRange(0, helper.value.length);
       const copied = document.execCommand && document.execCommand("copy");
       helper.remove();
-      status.textContent = copied ? message : "Copy this: " + text;
+      if (copied) {
+        status.textContent = message;
+      } else {
+        window.prompt("Copy this room code or link:", text);
+        status.textContent = "Copy box opened.";
+      }
     }
   }
 

@@ -121,6 +121,10 @@ button {
   color: #ffe184;
 }
 
+.resource--time b {
+  color: #83e79a;
+}
+
 .battlefield {
   display: grid;
   grid-template-rows: minmax(0, 1fr) 250px;
@@ -442,6 +446,21 @@ button {
 
 .command-tooltip[hidden] {
   display: none;
+}
+
+.win-condition {
+  position: fixed;
+  left: 14px;
+  bottom: 270px;
+  z-index: 19;
+  max-width: min(520px, calc(100vw - 28px));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(8, 18, 15, 0.82);
+  color: #fff7e8;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .game-chat {
@@ -821,7 +840,8 @@ button {
 
   .room-pill,
   #mission-toggle,
-  #alliance-toggle {
+  #alliance-toggle,
+  .win-condition {
     display: none;
   }
 
