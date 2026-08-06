@@ -579,8 +579,7 @@ async function handleApi(req, res, url) {
     }
     const fromId = room.players[fromIndex].id;
     const toId = room.players[targetIndex].id;
-    const reverseRequest = (room.allianceRequests || []).find((request) => request.fromId === toId && request.toId === fromId);
-    if (reverseRequest || room.players[targetIndex].ai) {
+    if (room.players[targetIndex].ai) {
       const key = allianceKey(fromIndex, targetIndex);
       removeAllianceRequests(room, fromId, toId);
       room.alliances = room.alliances || [];
@@ -589,9 +588,9 @@ async function handleApi(req, res, url) {
       json(res, 200, { room: publicRoom(room), accepted: true });
       return;
     }
-    removeAllianceRequests(room, fromId, toId);
     room.allianceRequests = room.allianceRequests || [];
-    room.allianceRequests.push({ fromId, toId });
+    const existingRequest = room.allianceRequests.some((request) => request.fromId === fromId && request.toId === toId);
+    if (!existingRequest) room.allianceRequests.push({ fromId, toId });
     broadcastPublicRoom(room);
     json(res, 200, { room: publicRoom(room), requested: true });
     return;

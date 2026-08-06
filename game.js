@@ -76,6 +76,7 @@
     supply: document.querySelector("#build-supply"),
     production: document.querySelector("#build-production"),
     defenseTower: document.querySelector("#build-defense-tower"),
+    dropGate: document.querySelector("#build-drop-gate"),
     extractor: document.querySelector("#build-extractor"),
     forge: document.querySelector("#build-forge"),
     heavyTech: document.querySelector("#build-heavy-tech"),
@@ -274,22 +275,84 @@
   };
 
   const stats = {
-    worker: { hp: 48, speed: 115, radius: 17, damage: 3, range: 24, cooldown: 0.9, wool: 1, attackGround: true, attackAir: false },
-    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, attackGround: true, attackAir: true, role: "Ranged anti-ground and anti-air unit" },
-    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, attackGround: true, attackAir: false, role: "Ground-only tank with splash damage" },
-    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, attackGround: true, attackAir: false, role: "Ground-only elite siege unit" },
-    support: { hp: 82, speed: 82, radius: 20, damage: 0, range: 155, cooldown: 1.1, wool: 3, vision: 390, heal: 13, role: "Healing support unit" },
-    flyer: { hp: 112, speed: 125, radius: 23, damage: 13, range: 145, cooldown: 0.9, wool: 4, vision: 440, airborne: true, attackGround: true, attackAir: true, role: "Flying anti-ground and anti-air raider" },
-    extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, attackGround: true, attackAir: false, role: "Ground-only extra heavy breaker" },
-    base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560 },
-    supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    production: { hp: 360, speed: 0, radius: 42, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    extractor: { hp: 280, speed: 0, radius: 36, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    forge: { hp: 320, speed: 0, radius: 39, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    heavyTech: { hp: 430, speed: 0, radius: 46, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    hangar: { hp: 390, speed: 0, radius: 44, damage: 0, range: 0, cooldown: 1, wool: 0 },
-    defenseTower: { hp: 310, speed: 0, radius: 32, damage: 16, range: 270, cooldown: 0.9, wool: 0, vision: 430, attackGround: true, attackAir: true },
-    wall: { hp: 480, speed: 0, radius: 31, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 80 }
+    worker: { hp: 48, speed: 115, radius: 17, damage: 3, range: 24, cooldown: 0.9, wool: 1, attackGround: true, attackAir: false, armorClass: "light" },
+    soldier: { hp: 78, speed: 92, radius: 20, damage: 9, range: 118, cooldown: 0.85, wool: 2, vision: 390, attackGround: true, attackAir: true, armorClass: "light", bonusVs: { air: 7 }, role: "Ranged anti-ground and anti-air unit" },
+    heavy: { hp: 150, speed: 68, radius: 26, damage: 18, range: 44, cooldown: 1.15, wool: 4, vision: 320, splash: 58, attackGround: true, attackAir: false, armorClass: "armored", bonusVs: { structure: 6 }, role: "Ground-only tank with splash damage" },
+    elite: { hp: 230, speed: 58, radius: 31, damage: 30, range: 74, cooldown: 1.2, wool: 6, vision: 360, attackGround: true, attackAir: false, armorClass: "armored", bonusVs: { armored: 6, structure: 8 }, role: "Ground-only elite siege unit" },
+    support: { hp: 82, speed: 82, radius: 20, damage: 0, range: 155, cooldown: 1.1, wool: 3, vision: 390, heal: 13, armorClass: "light", role: "Healing support unit" },
+    flyer: { hp: 112, speed: 125, radius: 23, damage: 13, range: 145, cooldown: 0.9, wool: 4, vision: 440, airborne: true, attackGround: true, attackAir: true, armorClass: "air", bonusVs: { light: 3 }, role: "Flying anti-ground and anti-air raider" },
+    extraHeavy: { hp: 360, speed: 42, radius: 38, damage: 44, range: 54, cooldown: 1.55, wool: 8, vision: 340, splash: 72, attackGround: true, attackAir: false, armorClass: "armored", bonusVs: { structure: 14, armored: 8 }, role: "Ground-only extra heavy breaker" },
+    base: { hp: 720, speed: 0, radius: 58, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 560, armorClass: "structure" },
+    supply: { hp: 240, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    production: { hp: 360, speed: 0, radius: 42, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    extractor: { hp: 280, speed: 0, radius: 36, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    forge: { hp: 320, speed: 0, radius: 39, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    heavyTech: { hp: 430, speed: 0, radius: 46, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    hangar: { hp: 390, speed: 0, radius: 44, damage: 0, range: 0, cooldown: 1, wool: 0, armorClass: "structure" },
+    defenseTower: { hp: 310, speed: 0, radius: 32, damage: 16, range: 270, cooldown: 0.9, wool: 0, vision: 430, attackGround: true, attackAir: true, armorClass: "structure", bonusVs: { air: 4 } },
+    wall: { hp: 480, speed: 0, radius: 31, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 80, armorClass: "structure" },
+    dropGate: { hp: 420, speed: 0, radius: 34, damage: 0, range: 0, cooldown: 1, wool: 0, vision: 130, armorClass: "structure" }
+  };
+
+  const factionUnitOverrides = {
+    fire: {
+      soldier: {
+        range: 30,
+        damage: 12,
+        cooldown: 0.72,
+        attackAir: false,
+        bonusVs: { light: 4 },
+        role: "Fast melee swarm attacker"
+      },
+      support: {
+        damage: 11,
+        heal: 0,
+        range: 170,
+        cooldown: 0.95,
+        attackGround: false,
+        attackAir: true,
+        bonusVs: { air: 11 },
+        role: "Dedicated anti-air archer"
+      },
+      heavy: {
+        range: 36,
+        damage: 22,
+        attackAir: false,
+        bonusVs: { structure: 8 },
+        role: "Melee armored ram with splash damage"
+      }
+    },
+    wolves: {
+      soldier: {
+        range: 28,
+        damage: 11,
+        cooldown: 0.78,
+        attackAir: false,
+        role: "Melee wolf raider"
+      },
+      heavy: {
+        range: 34,
+        damage: 23,
+        attackAir: false,
+        role: "Melee bruiser"
+      },
+      support: {
+        damage: 10,
+        heal: 0,
+        range: 165,
+        cooldown: 1,
+        attackGround: false,
+        attackAir: true,
+        bonusVs: { air: 10 },
+        role: "Moon anti-air shaman"
+      },
+      extraHeavy: {
+        range: 46,
+        damage: 48,
+        attackAir: false,
+        role: "Melee den breaker"
+      }
+    }
   };
 
   const costs = {
@@ -304,6 +367,7 @@
     supply: { l: 0, m: 95 },
     production: { l: 0, m: 145 },
     defenseTower: { l: 35, m: 125 },
+    dropGate: { l: 20, m: 115 },
     extractor: { l: 0, m: 60 },
     forge: { l: 25, m: 125 },
     heavyTech: { l: 85, m: 190 },
@@ -314,7 +378,7 @@
   };
 
   const trainTimes = { worker: 9, soldier: 12, heavy: 16, elite: 24, support: 17, flyer: 21, extraHeavy: 34 };
-  const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, extractor: 16, forge: 20, heavyTech: 28, hangar: 25 };
+  const buildTimes = { base: 30, supply: 12, production: 18, defenseTower: 16, dropGate: 14, extractor: 16, forge: 20, heavyTech: 28, hangar: 25 };
   const commandTooltipTypes = {
     worker: { label: "Train Worker", type: "worker", time: trainTimes.worker, mode: "Train" },
     soldier: { label: "Train Army", type: "soldier", time: trainTimes.soldier, mode: "Train" },
@@ -327,6 +391,7 @@
     supply: { label: "Build Supply", type: "supply", time: buildTimes.supply, mode: "Build" },
     production: { label: "Build Barracks", type: "production", time: buildTimes.production, mode: "Build" },
     defenseTower: { label: "Build Defence Tower", type: "defenseTower", time: buildTimes.defenseTower, mode: "Build" },
+    dropGate: { label: "Build Drop Gate", type: "dropGate", time: buildTimes.dropGate, mode: "Build" },
     extractor: { label: "Build Extractor", type: "extractor", time: buildTimes.extractor, mode: "Build" },
     forge: { label: "Build Forge", type: "forge", time: buildTimes.forge, mode: "Build" },
     heavyTech: { label: "Build Heavy Tech", type: "heavyTech", time: buildTimes.heavyTech, mode: "Build" },
@@ -1141,7 +1206,7 @@
   }
 
   function addUnit(owner, faction, type, x, y, playerIndex = ownerPlayerIndex(owner)) {
-    const s = stats[type];
+    const s = effectiveStats({ faction, type });
     const unit = {
       id: nextId++,
       kind: "unit",
@@ -1193,6 +1258,14 @@
     state.units.push(unit);
     if (state.setupComplete && owner === "player") state.stats.unitsCreated += 1;
     return unit;
+  }
+
+  function effectiveStats(entityOrType, faction = null) {
+    const type = typeof entityOrType === "string" ? entityOrType : entityOrType.type;
+    const factionKeyValue = faction || (typeof entityOrType === "string" ? null : entityOrType.faction);
+    const base = stats[type] || {};
+    const override = factionKeyValue && factionUnitOverrides[factionKeyValue] && factionUnitOverrides[factionKeyValue][type];
+    return override ? { ...base, ...override } : base;
   }
 
   function addHero(owner, name, type, x, y, options = {}) {
@@ -1261,7 +1334,7 @@
     if (type === "base") return base * 0.78;
     if (type === "production" || type === "heavyTech" || type === "hangar") return base * 0.78;
     if (type === "forge" || type === "extractor") return base * 0.75;
-    if (type === "supply" || type === "defenseTower") return base * 0.72;
+    if (type === "supply" || type === "defenseTower" || type === "dropGate") return base * 0.72;
     return base;
   }
 
@@ -1278,7 +1351,7 @@
 
   function canAttackTarget(attacker, target) {
     if (!attacker || !target) return true;
-    const attackerStats = stats[attacker.type];
+    const attackerStats = effectiveStats(attacker);
     if (!attackerStats || !(attackerStats.damage > 0)) return false;
     return stats[target.type].airborne ? Boolean(attackerStats.attackAir) : Boolean(attackerStats.attackGround);
   }
@@ -2213,8 +2286,36 @@
   function tooltipText(config) {
     const label = (config.mode || "Build") + " " + commandName(config.type, state.player.faction);
     const timeText = config.time ? "\nTime: " + config.time + "s" : "";
-    const counterText = stats[config.type] && stats[config.type].speed > 0 ? "\nRole: " + unitCounterText(config.type) : "";
-    return label + "\nCost: " + costLine(config.type) + timeText + counterText;
+    const unitStats = stats[config.type] && stats[config.type].speed > 0 ? effectiveStats(config.type, state.player.faction) : null;
+    const counterText = unitStats ? "\nRole: " + unitCounterText(config.type, state.player.faction) + armorTooltipText(unitStats) : "";
+    const towerText = config.type === "defenseTower" ? "\nManned tower attacks air and ground." : "";
+    const gateText = config.type === "dropGate" ? "\nAllied units can pass through. Enemies are blocked." : "";
+    return label + "\nCost: " + costLine(config.type) + timeText + counterText + towerText + gateText;
+  }
+
+  function armorTooltipText(unitStats) {
+    const parts = [];
+    if (unitStats.armorClass) parts.push("Armor: " + armorClassName(unitStats.armorClass));
+    const bonus = bonusText(unitStats);
+    if (bonus) parts.push("Bonus: " + bonus);
+    return parts.length ? "\n" + parts.join("\n") : "";
+  }
+
+  function armorClassName(value) {
+    if (value === "air") return "Air";
+    if (value === "armored") return "Armored";
+    if (value === "structure") return "Structure";
+    return "Light";
+  }
+
+  function bonusText(unitStats) {
+    const bonuses = unitStats.bonusVs || {};
+    const labels = [];
+    if (bonuses.air) labels.push("+" + bonuses.air + " vs air");
+    if (bonuses.light) labels.push("+" + bonuses.light + " vs light");
+    if (bonuses.armored) labels.push("+" + bonuses.armored + " vs armored");
+    if (bonuses.structure) labels.push("+" + bonuses.structure + " vs buildings");
+    return labels.join(", ");
   }
 
   function structureLabel(type, faction) {
@@ -2227,6 +2328,7 @@
     if (type === "hangar") return "Hangar";
     if (type === "defenseTower") return "Defence Tower";
     if (type === "wall") return faction === "rainbow" ? "Rainbow Gate Wall" : "Defensive Wall";
+    if (type === "dropGate") return "Drop Gate";
     return "Structure";
   }
 
@@ -2256,6 +2358,7 @@
     setCommandCaption(ui.supply, "Build", structureLabel("supply", state.player.faction));
     setCommandCaption(ui.production, "Build", structureLabel("production", state.player.faction));
     setCommandCaption(ui.defenseTower, "Build", structureLabel("defenseTower", state.player.faction));
+    setCommandCaption(ui.dropGate, "Build", structureLabel("dropGate", state.player.faction));
     setCommandCaption(ui.extractor, "Build", structureLabel("extractor", state.player.faction));
     setCommandCaption(ui.forge, "Build", structureLabel("forge", state.player.faction));
     setCommandCaption(ui.heavyTech, "Build", structureLabel("heavyTech", state.player.faction));
@@ -2329,6 +2432,7 @@
       ["supply", ui.supply],
       ["production", ui.production],
       ["defenseTower", ui.defenseTower],
+      ["dropGate", ui.dropGate],
       ["extractor", ui.extractor],
       ["forge", ui.forge],
       ["heavyTech", ui.heavyTech],
@@ -2494,6 +2598,10 @@
 
   function buildDefenseTower() {
     beginStructurePlacement("defenseTower");
+  }
+
+  function buildDropGate() {
+    beginStructurePlacement("dropGate");
   }
 
   function buildBase() {
@@ -3050,6 +3158,27 @@
 
   function burst(x, y, color) {
     state.effects.push({ x, y, r: 10, life: 0.7, color });
+  }
+
+  function meleeImpact(unit, target, color) {
+    const angle = Math.atan2(target.y - unit.y, target.x - unit.x);
+    const impactRadius = Math.max(8, stats[target.type].radius * 0.35);
+    state.effects.push({
+      x: target.x - Math.cos(angle) * impactRadius,
+      y: target.y - Math.sin(angle) * impactRadius,
+      r: 7,
+      life: 0.42,
+      color,
+      kind: "melee"
+    });
+    state.effects.push({
+      x: target.x,
+      y: target.y,
+      r: 4,
+      life: 0.22,
+      color: "#fff3bd",
+      kind: "spark"
+    });
   }
 
   function fireBullet(unit, target, color) {
@@ -3616,7 +3745,7 @@
   function attackStopPoint(unit, target, index = 0, total = 1) {
     const targetRadius = stats[target.type].radius;
     const unitRadius = stats[unit.type].radius;
-    const range = Math.max(18, (stats[unit.type].range || 0) + (unit.rangeBonus || 0));
+    const range = Math.max(18, (effectiveStats(unit).range || 0) + (unit.rangeBonus || 0));
     const desired = target.kind === "structure"
       ? targetRadius + Math.max(unitRadius + 8, Math.min(range * 0.62, 58))
       : targetRadius + Math.max(unitRadius * 0.8, Math.min(range * 0.4, 44));
@@ -3655,6 +3784,7 @@
   function pushUnitOutOfBuildings(unit) {
     state.structures.forEach((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return;
+      if (canPassStructure(unit, structure)) return;
       const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + 10;
       const dx = unit.x - structure.x;
       const dy = unit.y - structure.y;
@@ -3678,9 +3808,15 @@
   function blockingStructureAt(unit, x, y, padding = 12) {
     return state.structures.find((structure) => {
       if (structure.underConstruction && structure.buildProgress < structure.buildTime * 0.25) return false;
+      if (canPassStructure(unit, structure)) return false;
       const minDistance = footprintRadius(structure.type) + stats[unit.type].radius + padding;
       return Math.hypot(x - structure.x, y - structure.y) < minDistance;
     });
+  }
+
+  function canPassStructure(unit, structure) {
+    if (!unit || !structure || structure.type !== "dropGate") return false;
+    return !isHostileTo(unit.owner, structure, unit.playerIndex);
   }
 
   function nearestOpenMovePoint(unit, x, y, preferredAngle = 0) {
@@ -3952,7 +4088,7 @@
           unit.ty = unit.attackY;
         }
       } else if (target && unit.hold) {
-        const s = stats[unit.type];
+        const s = effectiveStats(unit);
         if (Math.hypot(target.x - unit.x, target.y - unit.y) > s.range + stats[target.type].radius) unit.target = null;
       } else if (target) {
         const stop = attackStopPoint(unit, target);
@@ -4014,7 +4150,7 @@
     state.units.forEach((unit) => {
       if (unit.garrisonedIn) return;
       if (unit.noAttack) return;
-      const s = stats[unit.type];
+      const s = effectiveStats(unit);
       if (s.heal) {
         const patient = state.units
           .filter((ally) => ally.id !== unit.id && !isHostileTo(unit.owner, ally, unit.playerIndex) && ally.hp < ally.maxHp)
@@ -4040,17 +4176,27 @@
       if (d > unitRange + stats[target.type].radius) return;
       if (unit.cooldown <= 0) {
         unit.cooldown = s.cooldown;
-        const antiAirBonus = unit.type === "soldier" && stats[target.type].airborne ? 7 : 0;
-        applyDamage(target, unitDamage + antiAirBonus, factionData[unit.faction].accent);
+        const damage = unitDamage + attackBonusAgainst(s, target);
+        applyDamage(target, damage, factionData[unit.faction].accent);
         if (s.splash) applySplashDamage(unit, target, unitDamage * 0.45, s.splash);
         if (unitRange > 55) fireBullet(unit, target, factionData[unit.faction].accent);
-        else burst(target.x, target.y, factionData[unit.faction].accent);
+        else meleeImpact(unit, target, factionData[unit.faction].accent);
         state.effects.push({ x: target.x, y: target.y - stats[target.type].radius * 0.2, r: 5, life: 0.25, color: "#fff7c4", kind: "spark" });
         if (target.type === "base" && target.hp <= 0) {
           if (target.owner === "enemy") state.stats.enemiesDestroyed += 1;
         }
       }
     });
+  }
+
+  function attackBonusAgainst(attackerStats, target) {
+    const bonuses = attackerStats.bonusVs || {};
+    let bonus = 0;
+    if (target.kind === "structure") bonus += bonuses.structure || 0;
+    if (stats[target.type].airborne) bonus += bonuses.air || 0;
+    const armorClass = effectiveStats(target).armorClass;
+    if (armorClass) bonus += bonuses[armorClass] || 0;
+    return bonus;
   }
 
   function applySplashDamage(unit, target, damage, radius) {
@@ -4978,6 +5124,8 @@
   function drawStructureShape(e, f, s) {
     if (e.type === "wall") {
       drawRainbowGateWall(e, s);
+    } else if (e.type === "dropGate") {
+      drawDropGate(e, f, s);
     } else if (e.faction === "wolves") {
       drawWolfStructureShape(e, s);
     } else {
@@ -5012,6 +5160,39 @@
       ctx.lineTo(s.radius * 0.95, -s.radius * 1.16);
       ctx.stroke();
     }
+  }
+
+  function drawDropGate(e, f, s) {
+    ctx.save();
+    const accent = f && f.accent ? f.accent : "#fff47a";
+    const main = f && f.color ? f.color : ownerColor(e.owner);
+    ctx.fillStyle = "rgba(255, 250, 232, 0.92)";
+    ctx.strokeStyle = main;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-s.radius * 1.05, -20, s.radius * 0.62, 46, 8);
+    ctx.roundRect(s.radius * 0.43, -20, s.radius * 0.62, 46, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s.radius * 0.52, -3);
+    ctx.lineTo(s.radius * 0.52, -3);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.84)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-s.radius * 0.48, 10);
+    ctx.lineTo(s.radius * 0.48, 10);
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(-s.radius * 0.74, -26, 7, 0, Math.PI * 2);
+    ctx.arc(s.radius * 0.74, -26, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawRainbowGateWall(e, s) {
@@ -5193,6 +5374,23 @@
       ctx.beginPath();
       ctx.arc(x + Math.cos(angle) * 5, y + Math.sin(angle) * 5, 4.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (e.kind === "melee") {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, e.life);
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r + 8, -0.8, 0.8);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,247,190,0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r + 3, -0.55, 0.55);
+      ctx.stroke();
       ctx.restore();
       return;
     }
@@ -5458,6 +5656,7 @@
       ui.supply.disabled = false;
       ui.production.disabled = false;
       ui.defenseTower.disabled = false;
+      ui.dropGate.disabled = false;
       ui.extractor.disabled = !hasBarracks;
       ui.forge.disabled = !hasBarracks;
       ui.heavyTech.disabled = !hasBarracks;
@@ -5526,32 +5725,44 @@
     } else if (first.kind === "structure" && first.type === "forge") {
       ui.copy.textContent = activeUpgradeText() || (upgrades.armor.researched ? "Forge selected. Elite armor is unlocked." : "Forge selected. Research armor upgrades here.");
     } else if (first.heroName) {
-      ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + unitCounterText(first.type) + " Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
+      ui.copy.textContent = first.storySpecial + ". " + combatRoleText(first) + unitCounterText(first.type, first.faction) + " " + armorSelectionText(first) + "Hero Power: " + (first.heroAbilityCooldown > 0 ? Math.ceil(first.heroAbilityCooldown) + "s cooldown." : "ready (Q).");
     } else {
       const producerQueue = first.kind === "structure" ? state.training.find((job) => job.producerId === first.id) : null;
       const forgeQueue = first.type === "forge" ? activeUpgradeText() : "";
       ui.copy.textContent = forgeQueue || (producerQueue
         ? "Training: " + Math.ceil(Math.max(0, producerQueue.duration - producerQueue.elapsed)) + " seconds remaining."
-        : picked.length === 1 ? f.name + " " + label + ". " + combatRoleText(first) + unitCounterText(first.type) + " Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
+        : picked.length === 1 ? f.name + " " + label + ". " + combatRoleText(first) + unitCounterText(first.type, first.faction) + " " + armorSelectionText(first) + "Press A, then click to attack-move." : "Group ready. Right click to move or press A, then click to attack-move.");
     }
   }
 
+  function armorSelectionText(entity) {
+    if (!entity || entity.kind !== "unit") return "";
+    const unitStats = effectiveStats(entity);
+    const parts = ["Armor: " + armorClassName(unitStats.armorClass || "light") + "."];
+    const bonus = bonusText(unitStats);
+    if (bonus) parts.push("Bonus " + bonus + ".");
+    return parts.join(" ") + " ";
+  }
+
   function combatRoleText(entity) {
-    const unitStats = stats[entity.type];
+    const unitStats = effectiveStats(entity);
     if (!unitStats || entity.kind !== "unit") return "";
     if (unitStats.heal) return "Heals friendly units and does not attack. ";
     if (unitStats.airborne) return "Flying unit; passes over buildings. ";
+    if ((unitStats.range || 0) <= 45 && unitStats.attackGround) return "Melee unit; must get close to attack. ";
     if (unitStats.attackAir && unitStats.attackGround) return "Attacks air and ground. ";
     if (unitStats.attackAir) return "Attacks air only. ";
     if (unitStats.attackGround) return "Attacks ground only. ";
     return "Does not attack. ";
   }
 
-  function unitCounterText(type) {
+  function unitCounterText(type, faction = state.player.faction) {
     if (type === "worker") return "Economy unit. Weak in fights.";
+    if (type === "soldier" && (faction === "fire" || faction === "wolves")) return "Good at swarming ground targets. Cannot hit flying units.";
     if (type === "soldier") return "Good scout and anti-air. Weak against heavy armor.";
     if (type === "heavy") return "Good against buildings and light units. Needs support vs flyers.";
     if (type === "elite") return "Strong core fighter. Expensive, protect it with workers and support.";
+    if (type === "support" && (faction === "fire" || faction === "wolves")) return "Dedicated anti-air unit. Protect it from ground melee units.";
     if (type === "support") return "Keeps armies alive. Weak if caught alone.";
     if (type === "flyer") return "Flies over buildings. Weak to anti-air soldiers and towers.";
     if (type === "extraHeavy") return "Base breaker. Very slow and weak without escorts.";
@@ -6047,6 +6258,10 @@
   ui.defenseTower.addEventListener("click", () => {
     startMatchMusic();
     buildDefenseTower();
+  });
+  ui.dropGate.addEventListener("click", () => {
+    startMatchMusic();
+    buildDropGate();
   });
   ui.extractor.addEventListener("click", () => {
     startMatchMusic();
